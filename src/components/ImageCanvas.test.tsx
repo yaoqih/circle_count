@@ -34,21 +34,24 @@ const getCanvasMetrics = (
   imageSize: { width: number; height: number },
 ) => {
   const scrollSpace = container.querySelector(".canvas-scroll-space");
+  const imageShell = container.querySelector(".canvas-image-shell");
   const image = container.querySelector(".canvas-image");
 
-  if (!(scrollSpace instanceof HTMLElement) || !(image instanceof HTMLElement)) {
+  if (
+    !(scrollSpace instanceof HTMLElement) ||
+    !(imageShell instanceof HTMLElement) ||
+    !(image instanceof HTMLElement)
+  ) {
     throw new Error("Canvas metrics unavailable");
   }
 
   const contentWidth = readPixels(image.style.width);
   const contentHeight = readPixels(image.style.height);
-  const scrollSpaceWidth = readPixels(scrollSpace.style.width);
-  const scrollSpaceHeight = readPixels(scrollSpace.style.height);
 
   return {
     origin: {
-      x: (scrollSpaceWidth - contentWidth) / 2,
-      y: (scrollSpaceHeight - contentHeight) / 2,
+      x: readPixels(imageShell.style.left),
+      y: readPixels(imageShell.style.top),
     },
     scroll: {
       left: stage.scrollLeft,
@@ -645,12 +648,12 @@ describe("ImageCanvas", () => {
     container.remove();
   });
 
-  it("keeps square images visually anchored instead of dropping downward on zoom", async () => {
+  it("keeps square images from dropping downward when zooming out near the lower half", async () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = ReactDOM.createRoot(container);
     const imageSize = { width: 2048, height: 2048 };
-    const viewportPoint = { x: 400, y: 260 };
+    const viewportPoint = { x: 400, y: 420 };
 
     await act(async () => {
       root.render(
@@ -706,7 +709,7 @@ describe("ImageCanvas", () => {
           cancelable: true,
           clientX: viewportPoint.x,
           clientY: viewportPoint.y,
-          deltaY: -100,
+          deltaY: 100,
         }),
       );
     });

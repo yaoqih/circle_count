@@ -105,6 +105,19 @@ export const getCenteredContentOrigin = (
   y: Math.round((scrollSpaceSize.height - contentSize.height) / 2),
 });
 
+export const shouldKeepFittedContentOriginOnZoomAxis = (input: {
+  padding: number;
+  previousContentOrigin: number;
+  previousScrollOffset: number;
+  nextCenteredOrigin: number;
+  nextContentLength: number;
+  viewportLength: number;
+}): boolean =>
+  Math.abs(input.previousContentOrigin - input.padding) <= 1 &&
+  input.previousScrollOffset === 0 &&
+  input.nextContentLength + input.padding * 2 <= input.viewportLength &&
+  input.nextCenteredOrigin > input.previousContentOrigin;
+
 export const getScrollForZoomAtPoint = (input: {
   viewportPoint: { x: number; y: number };
   contentOffset: { x: number; y: number };

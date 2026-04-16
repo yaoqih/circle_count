@@ -239,8 +239,7 @@ input {
 }
 
 .canvas-scroll-space {
-  display: grid;
-  place-items: center;
+  position: relative;
   min-width: 100%;
   min-height: 100%;
 }
@@ -254,7 +253,7 @@ input {
 }
 
 .canvas-image-shell {
-  position: relative;
+  position: absolute;
   display: block;
 }
 

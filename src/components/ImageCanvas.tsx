@@ -19,6 +19,7 @@ import {
   getCenteredContentOrigin,
   getScrollForZoomAtPoint,
   getScrollSpaceSize,
+  shouldKeepFittedContentOriginOnZoomAxis,
   shouldPreservePaddingOnZoomAxis,
 } from "../lib/viewport";
 
@@ -83,6 +84,10 @@ export const ImageCanvas = ({
   const [zoom, setZoom] = useState(1);
   const [scrollSpaceOverride, setScrollSpaceOverride] =
     useState<ImageSize | null>(null);
+  const [contentOriginOverride, setContentOriginOverride] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [isPointerInsideViewport, setIsPointerInsideViewport] = useState(false);
@@ -134,9 +139,13 @@ export const ImageCanvas = ({
     imageSize && contentSize
       ? Math.round((contentSize.width / imageSize.width) * 100)
       : 100;
-  const contentOrigin =
+  const centeredContentOrigin =
     contentSize && scrollSpaceSize
       ? getCenteredContentOrigin(scrollSpaceSize, contentSize)
+      : null;
+  const contentOrigin =
+    contentSize && scrollSpaceSize && centeredContentOrigin
+      ? contentOriginOverride ?? centeredContentOrigin
       : null;
 
   const moveBoxEvent = useEffectEvent(
@@ -173,6 +182,7 @@ export const ImageCanvas = ({
   const resetView = useEffectEvent((nextZoom: number) => {
     pendingScrollRef.current = { left: 0, top: 0 };
     setScrollSpaceOverride(null);
+    setContentOriginOverride(null);
     setZoom(clampZoom(nextZoom));
   });
 
@@ -244,10 +254,32 @@ export const ImageCanvas = ({
         anchoredContentPoint: anchoredContentPoint.y * nextZoom,
       }),
     };
-    const nextContentOrigin = getCenteredContentOrigin(
+    const nextCenteredContentOrigin = getCenteredContentOrigin(
       nextScrollSpaceSize,
       nextContentSize,
     );
+    const nextContentOrigin = {
+      x: shouldKeepFittedContentOriginOnZoomAxis({
+        padding: viewportPadding,
+        previousContentOrigin: contentOrigin.x,
+        previousScrollOffset: viewportRef.current.scrollLeft,
+        nextCenteredOrigin: nextCenteredContentOrigin.x,
+        nextContentLength: nextContentSize.width,
+        viewportLength: viewportSize.width,
+      })
+        ? contentOrigin.x
+        : nextCenteredContentOrigin.x,
+      y: shouldKeepFittedContentOriginOnZoomAxis({
+        padding: viewportPadding,
+        previousContentOrigin: contentOrigin.y,
+        previousScrollOffset: viewportRef.current.scrollTop,
+        nextCenteredOrigin: nextCenteredContentOrigin.y,
+        nextContentLength: nextContentSize.height,
+        viewportLength: viewportSize.height,
+      })
+        ? contentOrigin.y
+        : nextCenteredContentOrigin.y,
+    };
     const rawScrollOffset = getScrollForZoomAtPoint({
       viewportPoint: anchoredViewportPoint,
       contentOffset: {
@@ -282,6 +314,7 @@ export const ImageCanvas = ({
       viewportSize,
     });
     setScrollSpaceOverride(nextScrollSpaceSize);
+    setContentOriginOverride(nextContentOrigin);
     setZoom(nextZoom);
   };
 
@@ -355,6 +388,7 @@ export const ImageCanvas = ({
   useEffect(() => {
     setZoom(1);
     setScrollSpaceOverride(null);
+    setContentOriginOverride(null);
     dragStateRef.current = null;
     panStateRef.current = null;
     pendingScrollRef.current = null;
@@ -563,6 +597,8 @@ export const ImageCanvas = ({
             <div
               className="canvas-image-shell"
               style={{
+                left: contentOrigin?.x ?? 0,
+                top: contentOrigin?.y ?? 0,
                 width: contentSize.width,
                 height: contentSize.height,
               }}

@@ -8,6 +8,7 @@ import {
   getCenteredContentOrigin,
   getScrollForZoomAtPoint,
   getScrollSpaceSize,
+  shouldKeepFittedContentOriginOnZoomAxis,
   shouldPreservePaddingOnZoomAxis,
 } from "./viewport";
 
@@ -151,6 +152,30 @@ describe("viewport helpers", () => {
         previousContentOrigin: 24,
         previousScrollOffset: 0,
         nextScrollOffset: 66,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps a fitted axis pinned to padding when zooming out would otherwise recenter it", () => {
+    expect(
+      shouldKeepFittedContentOriginOnZoomAxis({
+        padding: 24,
+        previousContentOrigin: 24,
+        previousScrollOffset: 0,
+        nextCenteredOrigin: 64,
+        nextContentLength: 497,
+        viewportLength: 600,
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldKeepFittedContentOriginOnZoomAxis({
+        padding: 24,
+        previousContentOrigin: 24,
+        previousScrollOffset: 0,
+        nextCenteredOrigin: 68,
+        nextContentLength: 827,
+        viewportLength: 800,
       }),
     ).toBe(false);
   });
