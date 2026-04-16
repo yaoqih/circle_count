@@ -84,6 +84,57 @@ describe("ImageCanvas", () => {
     container.remove();
   });
 
+  it("reports the natural size when the image is already complete on mount", async () => {
+    const completeSpy = vi
+      .spyOn(HTMLImageElement.prototype, "complete", "get")
+      .mockReturnValue(true);
+    const naturalWidthSpy = vi
+      .spyOn(HTMLImageElement.prototype, "naturalWidth", "get")
+      .mockReturnValue(1600);
+    const naturalHeightSpy = vi
+      .spyOn(HTMLImageElement.prototype, "naturalHeight", "get")
+      .mockReturnValue(900);
+
+    const onImageLoad = vi.fn();
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = ReactDOM.createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <ImageCanvas
+          boxes={[]}
+          draftBox={null}
+          imageName="cached.jpg"
+          imageSize={null}
+          imageUrl="circle-label-image://asset?path=/tmp/cached.jpg"
+          isPlacingBox={false}
+          selectedBoxId={null}
+          onHoverImage={() => {}}
+          onImageError={() => {}}
+          onImageLoad={onImageLoad}
+          onMoveBox={() => {}}
+          onPanModifierChange={() => {}}
+          onPlaceDraftBox={() => {}}
+          onSelectBox={() => {}}
+        />,
+      );
+    });
+
+    expect(onImageLoad).toHaveBeenCalledWith({
+      width: 1600,
+      height: 900,
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+    completeSpy.mockRestore();
+    naturalWidthSpy.mockRestore();
+    naturalHeightSpy.mockRestore();
+  });
+
   it("keeps the current zoom when parent callbacks get a new identity", async () => {
     const container = document.createElement("div");
     document.body.appendChild(container);

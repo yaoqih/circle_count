@@ -70,6 +70,7 @@ export const ImageCanvas = ({
   onSelectBox,
 }: ImageCanvasProps) => {
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const imageElementRef = useRef<HTMLImageElement | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const panStateRef = useRef<PanState | null>(null);
   const pendingScrollRef = useRef<{ left: number; top: number } | null>(null);
@@ -285,6 +286,25 @@ export const ImageCanvas = ({
   }, [imageUrl]);
 
   useEffect(() => {
+    if (!imageUrl || imageSize) {
+      return;
+    }
+
+    const imageElement = imageElementRef.current;
+    if (
+      imageElement &&
+      imageElement.complete &&
+      imageElement.naturalWidth > 0 &&
+      imageElement.naturalHeight > 0
+    ) {
+      onImageLoad({
+        width: imageElement.naturalWidth,
+        height: imageElement.naturalHeight,
+      });
+    }
+  }, [imageUrl, imageSize, onImageLoad]);
+
+  useEffect(() => {
     if (pendingScrollRef.current && viewportRef.current) {
       const nextScroll = pendingScrollRef.current;
       viewportRef.current.scrollTo({
@@ -446,6 +466,7 @@ export const ImageCanvas = ({
               <img
                 alt={imageName ?? "annotation image"}
                 className="canvas-image"
+                ref={imageElementRef}
                 onError={() => {
                   onImageError(imageUrl);
                 }}
@@ -554,6 +575,7 @@ export const ImageCanvas = ({
             <img
               alt={imageName ?? "annotation image"}
               className="canvas-image canvas-image-loading"
+              ref={imageElementRef}
               onError={() => {
                 onImageError(imageUrl);
               }}
