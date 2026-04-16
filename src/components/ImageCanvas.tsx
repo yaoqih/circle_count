@@ -229,7 +229,7 @@ export const ImageCanvas = ({
     return () => {
       resizeObserver.disconnect();
     };
-  }, []);
+  }, [imageUrl]);
 
   useEffect(() => {
     panModifierChangeEvent(isSpacePressed);
@@ -290,18 +290,44 @@ export const ImageCanvas = ({
       return;
     }
 
-    const imageElement = imageElementRef.current;
-    if (
-      imageElement &&
-      imageElement.complete &&
-      imageElement.naturalWidth > 0 &&
-      imageElement.naturalHeight > 0
-    ) {
-      onImageLoad({
-        width: imageElement.naturalWidth,
-        height: imageElement.naturalHeight,
-      });
+    let cancelled = false;
+
+    const syncLoadedImageSize = () => {
+      const imageElement = imageElementRef.current;
+      if (
+        imageElement &&
+        imageElement.complete &&
+        imageElement.naturalWidth > 0 &&
+        imageElement.naturalHeight > 0
+      ) {
+        onImageLoad({
+          width: imageElement.naturalWidth,
+          height: imageElement.naturalHeight,
+        });
+        return true;
+      }
+
+      return false;
+    };
+
+    if (syncLoadedImageSize()) {
+      return;
     }
+
+    const pollHandle = window.setInterval(() => {
+      if (cancelled) {
+        return;
+      }
+
+      if (syncLoadedImageSize()) {
+        window.clearInterval(pollHandle);
+      }
+    }, 50);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(pollHandle);
+    };
   }, [imageUrl, imageSize, onImageLoad]);
 
   useEffect(() => {
