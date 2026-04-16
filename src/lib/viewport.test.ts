@@ -3,6 +3,7 @@ import {
   fitImageIntoViewport,
   getCenteredContentOrigin,
   getScrollForZoomAtPoint,
+  getScrollSpaceSize,
 } from "./viewport";
 
 describe("viewport helpers", () => {
@@ -49,6 +50,19 @@ describe("viewport helpers", () => {
     ).toEqual({
       x: 200,
       y: 200,
+    });
+  });
+
+  it("expands the scroll space once the zoomed image exceeds the viewport", () => {
+    expect(
+      getScrollSpaceSize(
+        { width: 827, height: 414 },
+        { width: 800, height: 600 },
+        24,
+      ),
+    ).toEqual({
+      width: 875,
+      height: 600,
     });
   });
 });

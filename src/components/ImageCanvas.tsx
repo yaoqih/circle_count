@@ -14,6 +14,7 @@ import {
   fitImageIntoViewport,
   getCenteredContentOrigin,
   getScrollForZoomAtPoint,
+  getScrollSpaceSize,
 } from "../lib/viewport";
 
 type ImageCanvasProps = {
@@ -105,13 +106,7 @@ export const ImageCanvas = ({
 
   const scrollSpaceSize =
     contentSize && viewportSize
-      ? {
-          width: Math.max(contentSize.width + viewportPadding * 2, viewportSize.width),
-          height: Math.max(
-            contentSize.height + viewportPadding * 2,
-            viewportSize.height,
-          ),
-        }
+      ? getScrollSpaceSize(contentSize, viewportSize, viewportPadding)
       : null;
 
   const scaleX =
@@ -383,7 +378,13 @@ export const ImageCanvas = ({
           setIsPanning(true);
         }}
         onWheel={(event: WheelEvent<HTMLDivElement>) => {
-          if (!viewportRef.current) {
+          if (
+            !viewportRef.current ||
+            !viewportSize ||
+            !fittedSize ||
+            !contentOrigin ||
+            !contentSize
+          ) {
             return;
           }
 
@@ -395,6 +396,15 @@ export const ImageCanvas = ({
             return;
           }
 
+          const nextContentSize = {
+            width: Math.max(1, Math.round(fittedSize.width * nextZoom)),
+            height: Math.max(1, Math.round(fittedSize.height * nextZoom)),
+          };
+          const nextScrollSpaceSize = getScrollSpaceSize(
+            nextContentSize,
+            viewportSize,
+            viewportPadding,
+          );
           const rect = viewportRef.current.getBoundingClientRect();
           pendingScrollRef.current = getScrollForZoomAtPoint({
             viewportPoint: {
@@ -405,20 +415,11 @@ export const ImageCanvas = ({
               x: viewportRef.current.scrollLeft,
               y: viewportRef.current.scrollTop,
             },
-            previousContentOrigin: contentOrigin ?? { x: 0, y: 0 },
-            nextContentOrigin:
-              scrollSpaceSize && contentSize
-                ? getCenteredContentOrigin(
-                    scrollSpaceSize,
-                    {
-                      width: Math.max(1, Math.round(fittedSize!.width * nextZoom)),
-                      height: Math.max(
-                        1,
-                        Math.round(fittedSize!.height * nextZoom),
-                      ),
-                    },
-                  )
-                : { x: 0, y: 0 },
+            previousContentOrigin: contentOrigin,
+            nextContentOrigin: getCenteredContentOrigin(
+              nextScrollSpaceSize,
+              nextContentSize,
+            ),
             previousZoom: zoom,
             nextZoom,
           });

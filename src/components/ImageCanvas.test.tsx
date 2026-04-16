@@ -13,7 +13,21 @@ describe("ImageCanvas", () => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
       .IS_REACT_ACT_ENVIRONMENT = true;
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
-    window.HTMLElement.prototype.scrollTo = vi.fn();
+    window.HTMLElement.prototype.scrollTo = vi.fn(function scrollToMock(
+      this: HTMLElement,
+      input?: ScrollToOptions | number,
+      _y?: number,
+    ) {
+      if (
+        typeof input === "object" &&
+        input !== null &&
+        "left" in input &&
+        "top" in input
+      ) {
+        this.scrollLeft = input.left ?? this.scrollLeft;
+        this.scrollTop = input.top ?? this.scrollTop;
+      }
+    }) as HTMLElement["scrollTo"];
     Object.defineProperty(window.HTMLElement.prototype, "clientWidth", {
       configurable: true,
       get() {
@@ -26,6 +40,10 @@ describe("ImageCanvas", () => {
         return 600;
       },
     });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
   });
 
   afterAll(() => {
@@ -118,6 +136,78 @@ describe("ImageCanvas", () => {
     expect(container.querySelector(".canvas-toolbar-meta strong")?.textContent).toBe(
       "451%",
     );
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("keeps the pointer anchored when zoom grows past the fitted viewport width", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = ReactDOM.createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <ImageCanvas
+          boxes={[]}
+          draftBox={null}
+          imageName="demo.jpg"
+          imageSize={{ width: 200, height: 100 }}
+          imageUrl="circle-label-image://asset?path=/tmp/demo.jpg"
+          isPlacingBox={false}
+          selectedBoxId={null}
+          onHoverImage={() => {}}
+          onImageError={() => {}}
+          onImageLoad={() => {}}
+          onMoveBox={() => {}}
+          onPanModifierChange={() => {}}
+          onPlaceDraftBox={() => {}}
+          onSelectBox={() => {}}
+        />,
+      );
+    });
+
+    const stage = container.querySelector(".canvas-stage");
+    expect(stage).not.toBeNull();
+
+    const scrollToMock = vi.mocked(window.HTMLElement.prototype.scrollTo);
+    scrollToMock.mockClear();
+
+    vi.spyOn(stage!, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 800,
+      bottom: 600,
+      width: 800,
+      height: 600,
+      toJSON: () => ({}),
+    });
+
+    await act(async () => {
+      stage!.dispatchEvent(
+        new WheelEvent("wheel", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 700,
+          clientY: 300,
+          deltaY: -100,
+        }),
+      );
+    });
+
+    const lastScrollCall = scrollToMock.mock.calls.at(-1)?.[0];
+    expect(typeof lastScrollCall).toBe("object");
+    expect(lastScrollCall).not.toBeNull();
+
+    const scrollOptions = lastScrollCall as ScrollToOptions;
+    expect(scrollOptions).toMatchObject({
+      left: 68,
+    });
+    expect(Math.abs(scrollOptions.top ?? Number.NaN)).toBe(0);
 
     await act(async () => {
       root.unmount();

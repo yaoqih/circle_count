@@ -22,6 +22,15 @@ export const fitImageIntoViewport = (
   };
 };
 
+export const getScrollSpaceSize = (
+  contentSize: ImageSize,
+  viewportSize: ImageSize,
+  padding: number,
+): ImageSize => ({
+  width: Math.max(contentSize.width + padding * 2, viewportSize.width),
+  height: Math.max(contentSize.height + padding * 2, viewportSize.height),
+});
+
 export const getCenteredContentOrigin = (
   scrollSpaceSize: ImageSize,
   contentSize: ImageSize,
