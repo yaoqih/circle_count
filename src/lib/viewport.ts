@@ -62,6 +62,19 @@ export const clampContentPoint = (
   y: Math.max(0, Math.min(contentPoint.y, contentSize.height)),
 });
 
+export const shouldPreservePaddingOnZoomAxis = (input: {
+  padding: number;
+  previousContentOrigin: number;
+  previousScrollOffset: number;
+  nextScrollOffset: number;
+}): boolean =>
+  // Avoid a jarring first-step jump when the fitted image is already flush to
+  // the viewport padding on this axis.
+  Math.abs(input.previousContentOrigin - input.padding) <= 1 &&
+  input.previousScrollOffset === 0 &&
+  input.nextScrollOffset > 0 &&
+  input.nextScrollOffset <= input.padding;
+
 export const clampViewportPointToContentBounds = (input: {
   viewportPoint: { x: number; y: number };
   contentOffset: { x: number; y: number };

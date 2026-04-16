@@ -114,6 +114,22 @@ const expectAnchorStable = (
   );
 };
 
+const expectHorizontalAnchorStable = (
+  container: HTMLElement,
+  stage: HTMLElement,
+  imageSize: { width: number; height: number },
+  imagePoint: { x: number; y: number },
+  viewportX: number,
+) => {
+  const nextMetrics = getCanvasMetrics(container, stage, imageSize);
+  const anchoredViewportPoint = getViewportPointForImagePoint(
+    nextMetrics,
+    imagePoint,
+  );
+
+  expect(Math.abs(anchoredViewportPoint.x - viewportX)).toBeLessThanOrEqual(1);
+};
+
 describe("ImageCanvas", () => {
   beforeAll(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
@@ -621,6 +637,94 @@ describe("ImageCanvas", () => {
       imageSize,
       anchoredImagePoint,
       effectiveViewportPoint,
+    );
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("keeps square images visually anchored instead of dropping downward on zoom", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = ReactDOM.createRoot(container);
+    const imageSize = { width: 2048, height: 2048 };
+    const viewportPoint = { x: 400, y: 260 };
+
+    await act(async () => {
+      root.render(
+        <ImageCanvas
+          boxes={[]}
+          draftBox={null}
+          imageName="square.jpg"
+          imageSize={imageSize}
+          imageUrl="circle-label-image://asset?path=/tmp/square.jpg"
+          isPlacingBox={false}
+          selectedBoxId={null}
+          onHoverImage={() => {}}
+          onImageError={() => {}}
+          onImageLoad={() => {}}
+          onMoveBox={() => {}}
+          onPanModifierChange={() => {}}
+          onPlaceDraftBox={() => {}}
+          onSelectBox={() => {}}
+        />,
+      );
+    });
+
+    const stage = container.querySelector(".canvas-stage");
+    expect(stage).not.toBeNull();
+
+    vi.spyOn(stage!, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 800,
+      bottom: 600,
+      width: 800,
+      height: 600,
+      toJSON: () => ({}),
+    });
+
+    const beforeMetrics = getCanvasMetrics(
+      container,
+      stage as HTMLElement,
+      imageSize,
+    );
+    const imageTopBefore = beforeMetrics.origin.y - beforeMetrics.scroll.top;
+    const anchoredImagePoint = getImagePointAtViewportPoint(
+      beforeMetrics,
+      viewportPoint,
+    );
+
+    await act(async () => {
+      stage!.dispatchEvent(
+        new WheelEvent("wheel", {
+          bubbles: true,
+          cancelable: true,
+          clientX: viewportPoint.x,
+          clientY: viewportPoint.y,
+          deltaY: -100,
+        }),
+      );
+    });
+
+    const afterMetrics = getCanvasMetrics(
+      container,
+      stage as HTMLElement,
+      imageSize,
+    );
+    const imageTopAfter = afterMetrics.origin.y - afterMetrics.scroll.top;
+
+    expect(Math.abs(imageTopAfter - imageTopBefore)).toBeLessThanOrEqual(4);
+    expectHorizontalAnchorStable(
+      container,
+      stage as HTMLElement,
+      imageSize,
+      anchoredImagePoint,
+      viewportPoint.x,
     );
 
     await act(async () => {

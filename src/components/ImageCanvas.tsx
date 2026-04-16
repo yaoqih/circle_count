@@ -19,6 +19,7 @@ import {
   getCenteredContentOrigin,
   getScrollForZoomAtPoint,
   getScrollSpaceSize,
+  shouldPreservePaddingOnZoomAxis,
 } from "../lib/viewport";
 
 type ImageCanvasProps = {
@@ -243,21 +244,40 @@ export const ImageCanvas = ({
         anchoredContentPoint: anchoredContentPoint.y * nextZoom,
       }),
     };
+    const nextContentOrigin = getCenteredContentOrigin(
+      nextScrollSpaceSize,
+      nextContentSize,
+    );
+    const rawScrollOffset = getScrollForZoomAtPoint({
+      viewportPoint: anchoredViewportPoint,
+      contentOffset: {
+        x: viewportRef.current.scrollLeft,
+        y: viewportRef.current.scrollTop,
+      },
+      previousContentOrigin: contentOrigin,
+      nextContentOrigin,
+      previousZoom: zoom,
+      nextZoom,
+    });
     pendingScrollRef.current = clampScrollOffset({
-      scrollOffset: getScrollForZoomAtPoint({
-        viewportPoint: anchoredViewportPoint,
-        contentOffset: {
-          x: viewportRef.current.scrollLeft,
-          y: viewportRef.current.scrollTop,
-        },
-        previousContentOrigin: contentOrigin,
-        nextContentOrigin: getCenteredContentOrigin(
-          nextScrollSpaceSize,
-          nextContentSize,
-        ),
-        previousZoom: zoom,
-        nextZoom,
-      }),
+      scrollOffset: {
+        left: shouldPreservePaddingOnZoomAxis({
+          padding: viewportPadding,
+          previousContentOrigin: contentOrigin.x,
+          previousScrollOffset: viewportRef.current.scrollLeft,
+          nextScrollOffset: rawScrollOffset.left,
+        })
+          ? 0
+          : rawScrollOffset.left,
+        top: shouldPreservePaddingOnZoomAxis({
+          padding: viewportPadding,
+          previousContentOrigin: contentOrigin.y,
+          previousScrollOffset: viewportRef.current.scrollTop,
+          nextScrollOffset: rawScrollOffset.top,
+        })
+          ? 0
+          : rawScrollOffset.top,
+      },
       scrollSpaceSize: nextScrollSpaceSize,
       viewportSize,
     });

@@ -8,6 +8,7 @@ import {
   getCenteredContentOrigin,
   getScrollForZoomAtPoint,
   getScrollSpaceSize,
+  shouldPreservePaddingOnZoomAxis,
 } from "./viewport";
 
 describe("viewport helpers", () => {
@@ -132,5 +133,25 @@ describe("viewport helpers", () => {
       x: 400,
       y: 112,
     });
+  });
+
+  it("preserves the fitted padding when zoom only needs a small new scroll offset", () => {
+    expect(
+      shouldPreservePaddingOnZoomAxis({
+        padding: 24,
+        previousContentOrigin: 24,
+        previousScrollOffset: 0,
+        nextScrollOffset: 24,
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldPreservePaddingOnZoomAxis({
+        padding: 24,
+        previousContentOrigin: 24,
+        previousScrollOffset: 0,
+        nextScrollOffset: 66,
+      }),
+    ).toBe(false);
   });
 });
