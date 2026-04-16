@@ -12,6 +12,7 @@ import type { AnnotationBox, ImageSize } from "../lib/annotation";
 import {
   clampZoom,
   fitImageIntoViewport,
+  getCenteredContentOrigin,
   getScrollForZoomAtPoint,
 } from "../lib/viewport";
 
@@ -27,6 +28,7 @@ type ImageCanvasProps = {
   onHoverImage: (point: { x: number; y: number } | null) => void;
   onImageLoad: (imageSize: ImageSize) => void;
   onMoveBox: (boxId: string, nextPosition: { x: number; y: number }) => void;
+  onPanModifierChange: (active: boolean) => void;
   onPlaceDraftBox: (point: { x: number; y: number }) => void;
   onSelectBox: (boxId: string | null) => void;
 };
@@ -62,6 +64,7 @@ export const ImageCanvas = ({
   onHoverImage,
   onImageLoad,
   onMoveBox,
+  onPanModifierChange,
   onPlaceDraftBox,
   onSelectBox,
 }: ImageCanvasProps) => {
@@ -73,6 +76,7 @@ export const ImageCanvas = ({
   const [zoom, setZoom] = useState(1);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
+  const [isPointerInsideViewport, setIsPointerInsideViewport] = useState(false);
 
   const viewportInnerSize = viewportSize
     ? {
@@ -118,6 +122,10 @@ export const ImageCanvas = ({
     imageSize && contentSize
       ? Math.round((contentSize.width / imageSize.width) * 100)
       : 100;
+  const contentOrigin =
+    contentSize && scrollSpaceSize
+      ? getCenteredContentOrigin(scrollSpaceSize, contentSize)
+      : null;
 
   const moveBoxEvent = useEffectEvent(
     (boxId: string, nextPosition: { x: number; y: number }) => {
@@ -171,8 +179,21 @@ export const ImageCanvas = ({
   }, []);
 
   useEffect(() => {
+    onPanModifierChange(isSpacePressed);
+  }, [isSpacePressed, onPanModifierChange]);
+
+  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.code === "Space" && !isEditableTarget(event.target)) {
+      const shouldHandleSpace =
+        isPointerInsideViewport ||
+        viewportRef.current?.contains(document.activeElement) ||
+        false;
+
+      if (
+        event.code === "Space" &&
+        shouldHandleSpace &&
+        !isEditableTarget(event.target)
+      ) {
         event.preventDefault();
         setIsSpacePressed(true);
       }
@@ -199,7 +220,7 @@ export const ImageCanvas = ({
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleBlur);
     };
-  }, []);
+  }, [isPointerInsideViewport]);
 
   useEffect(() => {
     setZoom(1);
@@ -327,10 +348,16 @@ export const ImageCanvas = ({
         className={`canvas-stage ${
           isPanning ? "canvas-stage-panning" : ""
         } ${isSpacePressed ? "canvas-stage-pan-ready" : ""}`}
-        onClick={() => {
-          if (!isPlacingBox && !isPanning) {
+          onClick={() => {
+          if (!isPlacingBox && !isPanning && !isSpacePressed) {
             onSelectBox(null);
           }
+        }}
+        onPointerEnter={() => {
+          setIsPointerInsideViewport(true);
+        }}
+        onPointerLeave={() => {
+          setIsPointerInsideViewport(false);
         }}
         onPointerDown={(event) => {
           if (!isSpacePressed || zoom <= 1 || !viewportRef.current) {
@@ -370,6 +397,20 @@ export const ImageCanvas = ({
               x: viewportRef.current.scrollLeft,
               y: viewportRef.current.scrollTop,
             },
+            previousContentOrigin: contentOrigin ?? { x: 0, y: 0 },
+            nextContentOrigin:
+              scrollSpaceSize && contentSize
+                ? getCenteredContentOrigin(
+                    scrollSpaceSize,
+                    {
+                      width: Math.max(1, Math.round(fittedSize!.width * nextZoom)),
+                      height: Math.max(
+                        1,
+                        Math.round(fittedSize!.height * nextZoom),
+                      ),
+                    },
+                  )
+                : { x: 0, y: 0 },
             previousZoom: zoom,
             nextZoom,
           });

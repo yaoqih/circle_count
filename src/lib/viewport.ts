@@ -22,17 +22,43 @@ export const fitImageIntoViewport = (
   };
 };
 
+export const getCenteredContentOrigin = (
+  scrollSpaceSize: ImageSize,
+  contentSize: ImageSize,
+) => ({
+  x: Math.round((scrollSpaceSize.width - contentSize.width) / 2),
+  y: Math.round((scrollSpaceSize.height - contentSize.height) / 2),
+});
+
 export const getScrollForZoomAtPoint = (input: {
   viewportPoint: { x: number; y: number };
   contentOffset: { x: number; y: number };
+  previousContentOrigin: { x: number; y: number };
+  nextContentOrigin: { x: number; y: number };
   previousZoom: number;
   nextZoom: number;
 }) => {
-  const contentX = (input.viewportPoint.x + input.contentOffset.x) / input.previousZoom;
-  const contentY = (input.viewportPoint.y + input.contentOffset.y) / input.previousZoom;
+  const contentX =
+    (input.viewportPoint.x +
+      input.contentOffset.x -
+      input.previousContentOrigin.x) /
+    input.previousZoom;
+  const contentY =
+    (input.viewportPoint.y +
+      input.contentOffset.y -
+      input.previousContentOrigin.y) /
+    input.previousZoom;
 
   return {
-    left: Math.round(contentX * input.nextZoom - input.viewportPoint.x),
-    top: Math.round(contentY * input.nextZoom - input.viewportPoint.y),
+    left: Math.round(
+      input.nextContentOrigin.x +
+        contentX * input.nextZoom -
+        input.viewportPoint.x,
+    ),
+    top: Math.round(
+      input.nextContentOrigin.y +
+        contentY * input.nextZoom -
+        input.viewportPoint.y,
+    ),
   };
 };

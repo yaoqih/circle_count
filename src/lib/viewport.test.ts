@@ -1,6 +1,7 @@
 import {
   clampZoom,
   fitImageIntoViewport,
+  getCenteredContentOrigin,
   getScrollForZoomAtPoint,
 } from "./viewport";
 
@@ -28,12 +29,26 @@ describe("viewport helpers", () => {
       getScrollForZoomAtPoint({
         viewportPoint: { x: 250, y: 100 },
         contentOffset: { x: 40, y: 10 },
+        previousContentOrigin: { x: 24, y: 24 },
+        nextContentOrigin: { x: 24, y: 24 },
         previousZoom: 1,
         nextZoom: 2,
       }),
     ).toEqual({
-      left: 330,
-      top: 120,
+      left: 306,
+      top: 96,
+    });
+  });
+
+  it("computes the centered content origin inside the scroll space", () => {
+    expect(
+      getCenteredContentOrigin(
+        { width: 900, height: 600 },
+        { width: 500, height: 200 },
+      ),
+    ).toEqual({
+      x: 200,
+      y: 200,
     });
   });
 });
