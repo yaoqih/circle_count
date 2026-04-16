@@ -99,8 +99,7 @@ input {
 .primary-button,
 .secondary-button,
 .text-button,
-.box-row,
-.canvas-box {
+.box-row {
   border: 0;
   cursor: pointer;
 }
@@ -283,10 +282,10 @@ input {
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
-  appearance: none;
+  cursor: move;
   margin: 0;
   padding: 0;
-  border: 1px solid rgba(242, 125, 24, 0.96);
+  border: 2px solid rgba(242, 125, 24, 0.98);
   background: rgba(242, 125, 24, 0.03);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
   color: inherit;

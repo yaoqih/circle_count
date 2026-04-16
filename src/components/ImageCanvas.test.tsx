@@ -254,6 +254,7 @@ describe("ImageCanvas", () => {
     const box = container.querySelector(".canvas-box");
     expect(stage).not.toBeNull();
     expect(box).not.toBeNull();
+    expect(box?.tagName).toBe("DIV");
 
     vi.spyOn(stage!, "getBoundingClientRect").mockReturnValue({
       x: 0,

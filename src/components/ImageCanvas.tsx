@@ -491,12 +491,11 @@ export const ImageCanvas = ({
                 }}
               >
                 {boxes.map((box, index) => (
-                  <button
+                  <div
                     key={box.id}
                     className={`canvas-box ${
                       selectedBoxId === box.id ? "canvas-box-selected" : ""
                     }`}
-                    disabled={isPlacingBox || isPanning || isSpacePressed}
                     onClick={(event) => {
                       if (isPlacingBox || isPanning || isSpacePressed) {
                         return;
@@ -522,16 +521,17 @@ export const ImageCanvas = ({
                       };
                       onSelectBox(box.id);
                     }}
+                    role="button"
                     style={{
                       left: box.x * scaleX,
                       top: box.y * scaleY,
                       width: box.width * scaleX,
                       height: box.height * scaleY,
                     }}
-                    type="button"
+                    tabIndex={-1}
                   >
                     <span className="canvas-box-label">{index + 1}</span>
-                  </button>
+                  </div>
                 ))}
                 {draftBox ? (
                   <div
