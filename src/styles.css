@@ -246,6 +246,14 @@ input {
   min-height: 100%;
 }
 
+.canvas-loading-shell {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 100%;
+  padding: 24px;
+}
+
 .canvas-image-shell {
   position: relative;
   display: block;
@@ -257,6 +265,11 @@ input {
   box-shadow:
     0 20px 50px rgba(22, 29, 35, 0.18),
     0 0 0 1px rgba(255, 255, 255, 0.42);
+}
+
+.canvas-image-loading {
+  max-width: 100%;
+  max-height: calc(100vh - 320px);
 }
 
 .canvas-overlay {

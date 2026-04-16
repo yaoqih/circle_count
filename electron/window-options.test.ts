@@ -9,7 +9,9 @@ describe("buildMainWindowOptions", () => {
     );
 
     expect(options.webPreferences?.sandbox).toBe(false);
-    expect(options.webPreferences?.preload).toContain("out/preload/preload.mjs");
+    expect(options.webPreferences?.preload?.replaceAll("\\", "/")).toContain(
+      "out/preload/preload.mjs",
+    );
     expect(options.webPreferences?.contextIsolation).toBe(true);
   });
 });

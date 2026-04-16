@@ -538,7 +538,24 @@ export const ImageCanvas = ({
               </div>
             </div>
           </div>
-        ) : null}
+        ) : (
+          <div className="canvas-loading-shell">
+            <img
+              alt={imageName ?? "annotation image"}
+              className="canvas-image canvas-image-loading"
+              onError={() => {
+                onImageError(imageUrl);
+              }}
+              onLoad={(event) => {
+                onImageLoad({
+                  width: event.currentTarget.naturalWidth,
+                  height: event.currentTarget.naturalHeight,
+                });
+              }}
+              src={imageUrl}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

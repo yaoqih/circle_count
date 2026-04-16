@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import {
   annotationPathForImage,
   imagePathFromResourceUrl,
@@ -14,8 +16,10 @@ describe("file helpers", () => {
   });
 
   it("maps an image path to a sibling yolo txt path", () => {
-    expect(annotationPathForImage("/tmp/demo/image_01.png")).toBe(
-      "/tmp/demo/image_01.txt",
+    expect(
+      annotationPathForImage(path.join(path.sep, "tmp", "demo", "image_01.png")),
+    ).toBe(
+      path.join(path.sep, "tmp", "demo", "image_01.txt"),
     );
   });
 

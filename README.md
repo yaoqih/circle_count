@@ -52,7 +52,7 @@ Generated artifacts are written to `release/`.
 
 ## GitHub Actions
 
-The workflow at `.github/workflows/windows-build.yml` builds the app on `windows-latest`, runs tests, and uploads the packaged Windows artifacts.
+The workflow at `.github/workflows/windows-build.yml` builds the app on `windows-latest`, runs tests, and publishes the packaged Windows files to the GitHub Release `windows-build-latest` instead of storing them as Actions artifacts.
 
 ## Shortcuts
 
