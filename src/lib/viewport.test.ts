@@ -1,6 +1,8 @@
 import {
+  clampScrollOffset,
   clampZoom,
   fitImageIntoViewport,
+  getAnchoredScrollSpaceLength,
   getCenteredContentOrigin,
   getScrollForZoomAtPoint,
   getScrollSpaceSize,
@@ -53,7 +55,7 @@ describe("viewport helpers", () => {
     });
   });
 
-  it("expands the scroll space once the zoomed image exceeds the viewport", () => {
+  it("expands only the axis that exceeds the viewport", () => {
     expect(
       getScrollSpaceSize(
         { width: 827, height: 414 },
@@ -64,5 +66,43 @@ describe("viewport helpers", () => {
       width: 875,
       height: 600,
     });
+  });
+
+  it("keeps the fitted scroll space flush until zoom exceeds the viewport", () => {
+    expect(
+      getScrollSpaceSize(
+        { width: 752, height: 376 },
+        { width: 800, height: 600 },
+        24,
+      ),
+    ).toEqual({
+      width: 800,
+      height: 600,
+    });
+  });
+
+  it("clamps scroll offsets into the scrollable range", () => {
+    expect(
+      clampScrollOffset({
+        scrollOffset: { left: 41, top: -3 },
+        scrollSpaceSize: { width: 848, height: 648 },
+        viewportSize: { width: 800, height: 600 },
+      }),
+    ).toEqual({
+      left: 41,
+      top: 0,
+    });
+  });
+
+  it("expands one axis only as much as needed to keep the zoom anchor scrollable", () => {
+    expect(
+      getAnchoredScrollSpaceLength({
+        contentLength: 414,
+        viewportLength: 600,
+        padding: 24,
+        viewportPoint: 300,
+        anchoredContentPoint: 205.3,
+      }),
+    ).toBe(604);
   });
 });

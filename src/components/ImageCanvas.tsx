@@ -10,8 +10,10 @@ import {
 
 import type { AnnotationBox, ImageSize } from "../lib/annotation";
 import {
+  clampScrollOffset,
   clampZoom,
   fitImageIntoViewport,
+  getAnchoredScrollSpaceLength,
   getCenteredContentOrigin,
   getScrollForZoomAtPoint,
   getScrollSpaceSize,
@@ -76,6 +78,8 @@ export const ImageCanvas = ({
   const pendingScrollRef = useRef<{ left: number; top: number } | null>(null);
   const [viewportSize, setViewportSize] = useState<ImageSize | null>(null);
   const [zoom, setZoom] = useState(1);
+  const [scrollSpaceOverride, setScrollSpaceOverride] =
+    useState<ImageSize | null>(null);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [isPointerInsideViewport, setIsPointerInsideViewport] = useState(false);
@@ -105,10 +109,19 @@ export const ImageCanvas = ({
         }
       : null;
 
-  const scrollSpaceSize =
+  const baseScrollSpaceSize =
     contentSize && viewportSize
       ? getScrollSpaceSize(contentSize, viewportSize, viewportPadding)
       : null;
+  const scrollSpaceSize = baseScrollSpaceSize
+    ? {
+        width: Math.max(baseScrollSpaceSize.width, scrollSpaceOverride?.width ?? 0),
+        height: Math.max(
+          baseScrollSpaceSize.height,
+          scrollSpaceOverride?.height ?? 0,
+        ),
+      }
+    : null;
 
   const scaleX =
     imageSize && contentSize ? contentSize.width / imageSize.width : 1;
@@ -156,6 +169,7 @@ export const ImageCanvas = ({
 
   const resetView = useEffectEvent((nextZoom: number) => {
     pendingScrollRef.current = { left: 0, top: 0 };
+    setScrollSpaceOverride(null);
     setZoom(clampZoom(nextZoom));
   });
 
@@ -182,29 +196,54 @@ export const ImageCanvas = ({
       width: Math.max(1, Math.round(fittedSize.width * nextZoom)),
       height: Math.max(1, Math.round(fittedSize.height * nextZoom)),
     };
-    const nextScrollSpaceSize = getScrollSpaceSize(
-      nextContentSize,
-      viewportSize,
-      viewportPadding,
-    );
     const rect = viewportRef.current.getBoundingClientRect();
-    pendingScrollRef.current = getScrollForZoomAtPoint({
-      viewportPoint: {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
-      },
-      contentOffset: {
-        x: viewportRef.current.scrollLeft,
-        y: viewportRef.current.scrollTop,
-      },
-      previousContentOrigin: contentOrigin,
-      nextContentOrigin: getCenteredContentOrigin(
-        nextScrollSpaceSize,
-        nextContentSize,
-      ),
-      previousZoom: zoom,
-      nextZoom,
+    const viewportPoint = {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    };
+    const anchoredContentPoint = {
+      x:
+        (viewportPoint.x + viewportRef.current.scrollLeft - contentOrigin.x) /
+        zoom,
+      y:
+        (viewportPoint.y + viewportRef.current.scrollTop - contentOrigin.y) /
+        zoom,
+    };
+    const nextScrollSpaceSize = {
+      width: getAnchoredScrollSpaceLength({
+        contentLength: nextContentSize.width,
+        viewportLength: viewportSize.width,
+        padding: viewportPadding,
+        viewportPoint: viewportPoint.x,
+        anchoredContentPoint: anchoredContentPoint.x * nextZoom,
+      }),
+      height: getAnchoredScrollSpaceLength({
+        contentLength: nextContentSize.height,
+        viewportLength: viewportSize.height,
+        padding: viewportPadding,
+        viewportPoint: viewportPoint.y,
+        anchoredContentPoint: anchoredContentPoint.y * nextZoom,
+      }),
+    };
+    pendingScrollRef.current = clampScrollOffset({
+      scrollOffset: getScrollForZoomAtPoint({
+        viewportPoint,
+        contentOffset: {
+          x: viewportRef.current.scrollLeft,
+          y: viewportRef.current.scrollTop,
+        },
+        previousContentOrigin: contentOrigin,
+        nextContentOrigin: getCenteredContentOrigin(
+          nextScrollSpaceSize,
+          nextContentSize,
+        ),
+        previousZoom: zoom,
+        nextZoom,
+      }),
+      scrollSpaceSize: nextScrollSpaceSize,
+      viewportSize,
     });
+    setScrollSpaceOverride(nextScrollSpaceSize);
     setZoom(nextZoom);
   };
 
@@ -277,6 +316,7 @@ export const ImageCanvas = ({
 
   useEffect(() => {
     setZoom(1);
+    setScrollSpaceOverride(null);
     dragStateRef.current = null;
     panStateRef.current = null;
     pendingScrollRef.current = null;

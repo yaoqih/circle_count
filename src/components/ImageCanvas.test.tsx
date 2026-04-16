@@ -8,6 +8,96 @@ class ResizeObserverStub {
   disconnect() {}
 }
 
+const clamp = (value: number, min: number, max: number) =>
+  Math.max(min, Math.min(value, max));
+
+const readPixels = (value: string | null | undefined): number => {
+  const parsed = Number.parseFloat(value ?? "");
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getScrollLimits = (element: HTMLElement) => {
+  const scrollSpace = element.firstElementChild;
+  if (!(scrollSpace instanceof HTMLElement)) {
+    return { left: 0, top: 0 };
+  }
+
+  return {
+    left: Math.max(0, readPixels(scrollSpace.style.width) - element.clientWidth),
+    top: Math.max(0, readPixels(scrollSpace.style.height) - element.clientHeight),
+  };
+};
+
+const getCanvasMetrics = (
+  container: HTMLElement,
+  stage: HTMLElement,
+  imageSize: { width: number; height: number },
+) => {
+  const scrollSpace = container.querySelector(".canvas-scroll-space");
+  const image = container.querySelector(".canvas-image");
+
+  if (!(scrollSpace instanceof HTMLElement) || !(image instanceof HTMLElement)) {
+    throw new Error("Canvas metrics unavailable");
+  }
+
+  const contentWidth = readPixels(image.style.width);
+  const contentHeight = readPixels(image.style.height);
+  const scrollSpaceWidth = readPixels(scrollSpace.style.width);
+  const scrollSpaceHeight = readPixels(scrollSpace.style.height);
+
+  return {
+    origin: {
+      x: (scrollSpaceWidth - contentWidth) / 2,
+      y: (scrollSpaceHeight - contentHeight) / 2,
+    },
+    scroll: {
+      left: stage.scrollLeft,
+      top: stage.scrollTop,
+    },
+    scale: {
+      x: contentWidth / imageSize.width,
+      y: contentHeight / imageSize.height,
+    },
+  };
+};
+
+const getImagePointAtViewportPoint = (
+  metrics: ReturnType<typeof getCanvasMetrics>,
+  viewportPoint: { x: number; y: number },
+) => ({
+  x: (viewportPoint.x + metrics.scroll.left - metrics.origin.x) / metrics.scale.x,
+  y: (viewportPoint.y + metrics.scroll.top - metrics.origin.y) / metrics.scale.y,
+});
+
+const getViewportPointForImagePoint = (
+  metrics: ReturnType<typeof getCanvasMetrics>,
+  imagePoint: { x: number; y: number },
+) => ({
+  x: metrics.origin.x + imagePoint.x * metrics.scale.x - metrics.scroll.left,
+  y: metrics.origin.y + imagePoint.y * metrics.scale.y - metrics.scroll.top,
+});
+
+const expectAnchorStable = (
+  container: HTMLElement,
+  stage: HTMLElement,
+  imageSize: { width: number; height: number },
+  imagePoint: { x: number; y: number },
+  viewportPoint: { x: number; y: number },
+) => {
+  const nextMetrics = getCanvasMetrics(container, stage, imageSize);
+  const anchoredViewportPoint = getViewportPointForImagePoint(
+    nextMetrics,
+    imagePoint,
+  );
+
+  expect(Math.abs(anchoredViewportPoint.x - viewportPoint.x)).toBeLessThanOrEqual(
+    1,
+  );
+  expect(Math.abs(anchoredViewportPoint.y - viewportPoint.y)).toBeLessThanOrEqual(
+    1,
+  );
+};
+
 describe("ImageCanvas", () => {
   beforeAll(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
@@ -24,8 +114,9 @@ describe("ImageCanvas", () => {
         "left" in input &&
         "top" in input
       ) {
-        this.scrollLeft = input.left ?? this.scrollLeft;
-        this.scrollTop = input.top ?? this.scrollTop;
+        const limits = getScrollLimits(this);
+        this.scrollLeft = clamp(input.left ?? this.scrollLeft, 0, limits.left);
+        this.scrollTop = clamp(input.top ?? this.scrollTop, 0, limits.top);
       }
     }) as HTMLElement["scrollTo"];
     Object.defineProperty(window.HTMLElement.prototype, "clientWidth", {
@@ -261,6 +352,8 @@ describe("ImageCanvas", () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = ReactDOM.createRoot(container);
+    const imageSize = { width: 200, height: 100 };
+    const viewportPoint = { x: 700, y: 300 };
 
     await act(async () => {
       root.render(
@@ -268,7 +361,7 @@ describe("ImageCanvas", () => {
           boxes={[]}
           draftBox={null}
           imageName="demo.jpg"
-          imageSize={{ width: 200, height: 100 }}
+          imageSize={imageSize}
           imageUrl="circle-label-image://asset?path=/tmp/demo.jpg"
           isPlacingBox={false}
           selectedBoxId={null}
@@ -301,27 +394,131 @@ describe("ImageCanvas", () => {
       toJSON: () => ({}),
     });
 
+    const anchoredImagePoint = getImagePointAtViewportPoint(
+      getCanvasMetrics(container, stage as HTMLElement, imageSize),
+      viewportPoint,
+    );
+
     await act(async () => {
       stage!.dispatchEvent(
         new WheelEvent("wheel", {
           bubbles: true,
           cancelable: true,
-          clientX: 700,
-          clientY: 300,
+          clientX: viewportPoint.x,
+          clientY: viewportPoint.y,
           deltaY: -100,
         }),
       );
     });
 
-    const lastScrollCall = scrollToMock.mock.calls.at(-1)?.[0];
-    expect(typeof lastScrollCall).toBe("object");
-    expect(lastScrollCall).not.toBeNull();
+    expect(scrollToMock).toHaveBeenCalled();
+    expectAnchorStable(
+      container,
+      stage as HTMLElement,
+      imageSize,
+      anchoredImagePoint,
+      viewportPoint,
+    );
 
-    const scrollOptions = lastScrollCall as ScrollToOptions;
-    expect(scrollOptions).toMatchObject({
-      left: 68,
+    await act(async () => {
+      root.unmount();
     });
-    expect(Math.abs(scrollOptions.top ?? Number.NaN)).toBe(0);
+    container.remove();
+  });
+
+  it("keeps the zoom anchor stable across consecutive wheel zoom steps", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = ReactDOM.createRoot(container);
+    const imageSize = { width: 200, height: 100 };
+    const viewportPoint = { x: 680, y: 260 };
+
+    await act(async () => {
+      root.render(
+        <ImageCanvas
+          boxes={[]}
+          draftBox={null}
+          imageName="demo.jpg"
+          imageSize={imageSize}
+          imageUrl="circle-label-image://asset?path=/tmp/demo.jpg"
+          isPlacingBox={false}
+          selectedBoxId={null}
+          onHoverImage={() => {}}
+          onImageError={() => {}}
+          onImageLoad={() => {}}
+          onMoveBox={() => {}}
+          onPanModifierChange={() => {}}
+          onPlaceDraftBox={() => {}}
+          onSelectBox={() => {}}
+        />,
+      );
+    });
+
+    const stage = container.querySelector(".canvas-stage");
+    expect(stage).not.toBeNull();
+
+    vi.spyOn(stage!, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 800,
+      bottom: 600,
+      width: 800,
+      height: 600,
+      toJSON: () => ({}),
+    });
+
+    const anchoredImagePoint = getImagePointAtViewportPoint(
+      getCanvasMetrics(container, stage as HTMLElement, imageSize),
+      viewportPoint,
+    );
+
+    await act(async () => {
+      stage!.dispatchEvent(
+        new WheelEvent("wheel", {
+          bubbles: true,
+          cancelable: true,
+          clientX: viewportPoint.x,
+          clientY: viewportPoint.y,
+          deltaY: -100,
+        }),
+      );
+    });
+
+    expect(container.querySelector(".canvas-toolbar-meta strong")?.textContent).toBe(
+      "414%",
+    );
+    expectAnchorStable(
+      container,
+      stage as HTMLElement,
+      imageSize,
+      anchoredImagePoint,
+      viewportPoint,
+    );
+
+    await act(async () => {
+      stage!.dispatchEvent(
+        new WheelEvent("wheel", {
+          bubbles: true,
+          cancelable: true,
+          clientX: viewportPoint.x,
+          clientY: viewportPoint.y,
+          deltaY: -100,
+        }),
+      );
+    });
+
+    expect(container.querySelector(".canvas-toolbar-meta strong")?.textContent).toBe(
+      "455%",
+    );
+    expectAnchorStable(
+      container,
+      stage as HTMLElement,
+      imageSize,
+      anchoredImagePoint,
+      viewportPoint,
+    );
 
     await act(async () => {
       root.unmount();

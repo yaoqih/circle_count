@@ -31,6 +31,29 @@ export const getScrollSpaceSize = (
   height: Math.max(contentSize.height + padding * 2, viewportSize.height),
 });
 
+export const getAnchoredScrollSpaceLength = (input: {
+  contentLength: number;
+  viewportLength: number;
+  padding: number;
+  viewportPoint: number;
+  anchoredContentPoint: number;
+}): number => {
+  const baseLength = Math.max(
+    input.contentLength + input.padding * 2,
+    input.viewportLength,
+  );
+  const minLengthForStart =
+    input.contentLength + 2 * (input.viewportPoint - input.anchoredContentPoint);
+  const minLengthForEnd =
+    2 * input.viewportLength -
+    input.contentLength +
+    2 * (input.anchoredContentPoint - input.viewportPoint);
+
+  return Math.ceil(
+    Math.max(baseLength, minLengthForStart, minLengthForEnd),
+  );
+};
+
 export const getCenteredContentOrigin = (
   scrollSpaceSize: ImageSize,
   contentSize: ImageSize,
@@ -71,3 +94,24 @@ export const getScrollForZoomAtPoint = (input: {
     ),
   };
 };
+
+export const clampScrollOffset = (input: {
+  scrollOffset: { left: number; top: number };
+  scrollSpaceSize: ImageSize;
+  viewportSize: ImageSize;
+}) => ({
+  left: Math.max(
+    0,
+    Math.min(
+      input.scrollOffset.left,
+      Math.max(0, input.scrollSpaceSize.width - input.viewportSize.width),
+    ),
+  ),
+  top: Math.max(
+    0,
+    Math.min(
+      input.scrollOffset.top,
+      Math.max(0, input.scrollSpaceSize.height - input.viewportSize.height),
+    ),
+  ),
+});
