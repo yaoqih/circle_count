@@ -54,6 +54,36 @@ export const getAnchoredScrollSpaceLength = (input: {
   );
 };
 
+export const clampContentPoint = (
+  contentPoint: { x: number; y: number },
+  contentSize: ImageSize,
+) => ({
+  x: Math.max(0, Math.min(contentPoint.x, contentSize.width)),
+  y: Math.max(0, Math.min(contentPoint.y, contentSize.height)),
+});
+
+export const clampViewportPointToContentBounds = (input: {
+  viewportPoint: { x: number; y: number };
+  contentOffset: { x: number; y: number };
+  contentOrigin: { x: number; y: number };
+  contentSize: ImageSize;
+}) => ({
+  x: Math.max(
+    input.contentOrigin.x - input.contentOffset.x,
+    Math.min(
+      input.viewportPoint.x,
+      input.contentOrigin.x - input.contentOffset.x + input.contentSize.width,
+    ),
+  ),
+  y: Math.max(
+    input.contentOrigin.y - input.contentOffset.y,
+    Math.min(
+      input.viewportPoint.y,
+      input.contentOrigin.y - input.contentOffset.y + input.contentSize.height,
+    ),
+  ),
+});
+
 export const getCenteredContentOrigin = (
   scrollSpaceSize: ImageSize,
   contentSize: ImageSize,

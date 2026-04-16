@@ -10,8 +10,10 @@ import {
 
 import type { AnnotationBox, ImageSize } from "../lib/annotation";
 import {
+  clampContentPoint,
   clampScrollOffset,
   clampZoom,
+  clampViewportPointToContentBounds,
   fitImageIntoViewport,
   getAnchoredScrollSpaceLength,
   getCenteredContentOrigin,
@@ -201,33 +203,49 @@ export const ImageCanvas = ({
       x: event.clientX - rect.left,
       y: event.clientY - rect.top,
     };
-    const anchoredContentPoint = {
-      x:
-        (viewportPoint.x + viewportRef.current.scrollLeft - contentOrigin.x) /
-        zoom,
-      y:
-        (viewportPoint.y + viewportRef.current.scrollTop - contentOrigin.y) /
-        zoom,
-    };
+    const anchoredViewportPoint = clampViewportPointToContentBounds({
+      viewportPoint,
+      contentOffset: {
+        x: viewportRef.current.scrollLeft,
+        y: viewportRef.current.scrollTop,
+      },
+      contentOrigin,
+      contentSize,
+    });
+    const anchoredContentPoint = clampContentPoint(
+      {
+        x:
+          (anchoredViewportPoint.x +
+            viewportRef.current.scrollLeft -
+            contentOrigin.x) /
+          zoom,
+        y:
+          (anchoredViewportPoint.y +
+            viewportRef.current.scrollTop -
+            contentOrigin.y) /
+          zoom,
+      },
+      contentSize,
+    );
     const nextScrollSpaceSize = {
       width: getAnchoredScrollSpaceLength({
         contentLength: nextContentSize.width,
         viewportLength: viewportSize.width,
         padding: viewportPadding,
-        viewportPoint: viewportPoint.x,
+        viewportPoint: anchoredViewportPoint.x,
         anchoredContentPoint: anchoredContentPoint.x * nextZoom,
       }),
       height: getAnchoredScrollSpaceLength({
         contentLength: nextContentSize.height,
         viewportLength: viewportSize.height,
         padding: viewportPadding,
-        viewportPoint: viewportPoint.y,
+        viewportPoint: anchoredViewportPoint.y,
         anchoredContentPoint: anchoredContentPoint.y * nextZoom,
       }),
     };
     pendingScrollRef.current = clampScrollOffset({
       scrollOffset: getScrollForZoomAtPoint({
-        viewportPoint,
+        viewportPoint: anchoredViewportPoint,
         contentOffset: {
           x: viewportRef.current.scrollLeft,
           y: viewportRef.current.scrollTop,
