@@ -275,6 +275,7 @@ input {
 .canvas-overlay {
   position: absolute;
   inset: 0;
+  z-index: 1;
 }
 
 .canvas-box {
@@ -282,15 +283,20 @@ input {
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
-  border: 2px solid rgba(242, 125, 24, 0.95);
-  background: rgba(242, 125, 24, 0.08);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(242, 125, 24, 0.96);
+  background: rgba(242, 125, 24, 0.03);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
+  color: inherit;
+  font: inherit;
   touch-action: none;
 }
 
 .canvas-box-selected {
   border-color: #1f69b3;
-  background: rgba(31, 105, 179, 0.12);
+  background: rgba(31, 105, 179, 0.04);
 }
 
 .canvas-box-draft {

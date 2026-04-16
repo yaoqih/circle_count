@@ -158,6 +158,55 @@ export const ImageCanvas = ({
     setZoom(clampZoom(nextZoom));
   });
 
+  const handleWheelZoom = (event: WheelEvent<HTMLDivElement>) => {
+    if (
+      !viewportRef.current ||
+      !viewportSize ||
+      !fittedSize ||
+      !contentOrigin ||
+      !contentSize
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const factor = event.deltaY < 0 ? 1.1 : 0.9;
+    const nextZoom = clampZoom(zoom * factor);
+    if (nextZoom === zoom) {
+      return;
+    }
+
+    const nextContentSize = {
+      width: Math.max(1, Math.round(fittedSize.width * nextZoom)),
+      height: Math.max(1, Math.round(fittedSize.height * nextZoom)),
+    };
+    const nextScrollSpaceSize = getScrollSpaceSize(
+      nextContentSize,
+      viewportSize,
+      viewportPadding,
+    );
+    const rect = viewportRef.current.getBoundingClientRect();
+    pendingScrollRef.current = getScrollForZoomAtPoint({
+      viewportPoint: {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      },
+      contentOffset: {
+        x: viewportRef.current.scrollLeft,
+        y: viewportRef.current.scrollTop,
+      },
+      previousContentOrigin: contentOrigin,
+      nextContentOrigin: getCenteredContentOrigin(
+        nextScrollSpaceSize,
+        nextContentSize,
+      ),
+      previousZoom: zoom,
+      nextZoom,
+    });
+    setZoom(nextZoom);
+  };
+
   useEffect(() => {
     const viewportElement = viewportRef.current;
     if (!viewportElement) {
@@ -377,54 +426,7 @@ export const ImageCanvas = ({
           };
           setIsPanning(true);
         }}
-        onWheel={(event: WheelEvent<HTMLDivElement>) => {
-          if (
-            !viewportRef.current ||
-            !viewportSize ||
-            !fittedSize ||
-            !contentOrigin ||
-            !contentSize
-          ) {
-            return;
-          }
-
-          event.preventDefault();
-
-          const factor = event.deltaY < 0 ? 1.1 : 0.9;
-          const nextZoom = clampZoom(zoom * factor);
-          if (nextZoom === zoom) {
-            return;
-          }
-
-          const nextContentSize = {
-            width: Math.max(1, Math.round(fittedSize.width * nextZoom)),
-            height: Math.max(1, Math.round(fittedSize.height * nextZoom)),
-          };
-          const nextScrollSpaceSize = getScrollSpaceSize(
-            nextContentSize,
-            viewportSize,
-            viewportPadding,
-          );
-          const rect = viewportRef.current.getBoundingClientRect();
-          pendingScrollRef.current = getScrollForZoomAtPoint({
-            viewportPoint: {
-              x: event.clientX - rect.left,
-              y: event.clientY - rect.top,
-            },
-            contentOffset: {
-              x: viewportRef.current.scrollLeft,
-              y: viewportRef.current.scrollTop,
-            },
-            previousContentOrigin: contentOrigin,
-            nextContentOrigin: getCenteredContentOrigin(
-              nextScrollSpaceSize,
-              nextContentSize,
-            ),
-            previousZoom: zoom,
-            nextZoom,
-          });
-          setZoom(nextZoom);
-        }}
+        onWheelCapture={handleWheelZoom}
       >
         {contentSize && scrollSpaceSize ? (
           <div

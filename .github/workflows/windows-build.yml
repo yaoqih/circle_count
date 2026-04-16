@@ -41,7 +41,7 @@ jobs:
         with:
           tag: windows-build-latest
           name: Windows Build Latest
-          artifacts: "release/*"
+          artifacts: "release/*.exe,release/*.blockmap,release/latest*.yml"
           prerelease: true
           allowUpdates: true
           replacesArtifacts: true

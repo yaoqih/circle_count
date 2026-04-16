@@ -214,4 +214,78 @@ describe("ImageCanvas", () => {
     });
     container.remove();
   });
+
+  it("renders existing boxes and still zooms when wheeling over a box", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = ReactDOM.createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <ImageCanvas
+          boxes={[
+            {
+              id: "box-1",
+              classId: 0,
+              x: 40,
+              y: 20,
+              width: 60,
+              height: 40,
+            },
+          ]}
+          draftBox={null}
+          imageName="demo.jpg"
+          imageSize={{ width: 200, height: 100 }}
+          imageUrl="circle-label-image://asset?path=/tmp/demo.jpg"
+          isPlacingBox={false}
+          selectedBoxId={null}
+          onHoverImage={() => {}}
+          onImageError={() => {}}
+          onImageLoad={() => {}}
+          onMoveBox={() => {}}
+          onPanModifierChange={() => {}}
+          onPlaceDraftBox={() => {}}
+          onSelectBox={() => {}}
+        />,
+      );
+    });
+
+    const stage = container.querySelector(".canvas-stage");
+    const box = container.querySelector(".canvas-box");
+    expect(stage).not.toBeNull();
+    expect(box).not.toBeNull();
+
+    vi.spyOn(stage!, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 800,
+      bottom: 600,
+      width: 800,
+      height: 600,
+      toJSON: () => ({}),
+    });
+
+    await act(async () => {
+      box!.dispatchEvent(
+        new WheelEvent("wheel", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 260,
+          clientY: 180,
+          deltaY: -100,
+        }),
+      );
+    });
+
+    expect(container.querySelector(".canvas-toolbar-meta strong")?.textContent).toBe(
+      "414%",
+    );
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
 });
