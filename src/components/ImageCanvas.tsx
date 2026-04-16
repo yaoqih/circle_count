@@ -132,6 +132,14 @@ export const ImageCanvas = ({
       onMoveBox(boxId, nextPosition);
     },
   );
+  const hoverImageEvent = useEffectEvent(
+    (point: { x: number; y: number } | null) => {
+      onHoverImage(point);
+    },
+  );
+  const panModifierChangeEvent = useEffectEvent((active: boolean) => {
+    onPanModifierChange(active);
+  });
 
   const imagePointFromPointerEvent = (
     event: ReactPointerEvent<HTMLDivElement> | MouseEvent<HTMLDivElement>,
@@ -179,8 +187,8 @@ export const ImageCanvas = ({
   }, []);
 
   useEffect(() => {
-    onPanModifierChange(isSpacePressed);
-  }, [isSpacePressed, onPanModifierChange]);
+    panModifierChangeEvent(isSpacePressed);
+  }, [isSpacePressed]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -228,9 +236,9 @@ export const ImageCanvas = ({
     panStateRef.current = null;
     pendingScrollRef.current = null;
     setIsPanning(false);
-    onHoverImage(null);
+    hoverImageEvent(null);
     viewportRef.current?.scrollTo({ left: 0, top: 0 });
-  }, [imageUrl, onHoverImage]);
+  }, [imageUrl]);
 
   useEffect(() => {
     if (pendingScrollRef.current && viewportRef.current) {
@@ -464,7 +472,7 @@ export const ImageCanvas = ({
                   }
                 }}
                 onPointerLeave={() => {
-                  onHoverImage(null);
+                  hoverImageEvent(null);
                 }}
                 onPointerMove={(event) => {
                   if (isPanning || isSpacePressed) {
@@ -472,7 +480,7 @@ export const ImageCanvas = ({
                   }
 
                   const point = imagePointFromPointerEvent(event);
-                  onHoverImage(point);
+                  hoverImageEvent(point);
                 }}
                 style={{
                   width: contentSize.width,
