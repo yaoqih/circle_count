@@ -199,4 +199,22 @@ describe("App", () => {
     });
     container.remove();
   });
+
+  it("starts with no zoom toolbar before any image is opened", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = ReactDOM.createRoot(container);
+
+    await act(async () => {
+      root.render(<App />);
+    });
+
+    expect(container.querySelector(".canvas-toolbar")).toBeNull();
+    expect(container.querySelector(".canvas-empty")).not.toBeNull();
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
 });

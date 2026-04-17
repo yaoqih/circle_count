@@ -391,6 +391,107 @@ describe("ImageCanvas", () => {
     container.remove();
   });
 
+  it("preserves zoom and viewport position when navigating to another image", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = ReactDOM.createRoot(container);
+    const imageSize = { width: 200, height: 100 };
+
+    const renderCanvas = (imageUrl: string) =>
+      root.render(
+        <ImageCanvas
+          boxes={[]}
+          draftBox={null}
+          imageName="demo.jpg"
+          imageSize={imageSize}
+          imageUrl={imageUrl}
+          isPlacingBox={false}
+          selectedBoxId={null}
+          onHoverImage={() => {}}
+          onImageError={() => {}}
+          onImageLoad={() => {}}
+          onMoveBox={() => {}}
+          onPlaceDraftBox={() => {}}
+          onSelectBox={() => {}}
+        />,
+      );
+
+    await act(async () => {
+      renderCanvas("circle-label-image://asset?path=/tmp/demo-1.jpg");
+    });
+
+    const stage = container.querySelector(".canvas-stage");
+    expect(stage).not.toBeNull();
+
+    const plusButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "+",
+    );
+    expect(plusButton).not.toBeUndefined();
+
+    await act(async () => {
+      plusButton?.click();
+    });
+
+    await act(async () => {
+      stage!.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          pointerId: 1,
+          clientX: 400,
+          clientY: 300,
+        }),
+      );
+      window.dispatchEvent(
+        new PointerEvent("pointermove", {
+          bubbles: true,
+          pointerId: 1,
+          clientX: 360,
+          clientY: 270,
+        }),
+      );
+      window.dispatchEvent(
+        new PointerEvent("pointerup", {
+          bubbles: true,
+          pointerId: 1,
+          clientX: 360,
+          clientY: 270,
+        }),
+      );
+    });
+
+    const zoomBefore = container.querySelector(
+      ".canvas-toolbar-meta strong",
+    )?.textContent;
+    const metricsBefore = getCanvasMetrics(
+      container,
+      stage as HTMLElement,
+      imageSize,
+    );
+
+    await act(async () => {
+      renderCanvas("circle-label-image://asset?path=/tmp/demo-2.jpg");
+    });
+
+    const zoomAfter = container.querySelector(
+      ".canvas-toolbar-meta strong",
+    )?.textContent;
+    const stageAfter = container.querySelector(".canvas-stage");
+    const metricsAfter = getCanvasMetrics(
+      container,
+      stageAfter as HTMLElement,
+      imageSize,
+    );
+
+    expect(zoomAfter).toBe(zoomBefore);
+    expect(metricsAfter.origin.x).toBe(metricsBefore.origin.x);
+    expect(metricsAfter.origin.y).toBe(metricsBefore.origin.y);
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
   it("keeps the pointer anchored when zoom grows past the fitted viewport width", async () => {
     const container = document.createElement("div");
     document.body.appendChild(container);

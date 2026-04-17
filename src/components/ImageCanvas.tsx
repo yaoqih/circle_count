@@ -303,13 +303,16 @@ export const ImageCanvas = ({
   }, []);
 
   useEffect(() => {
-    setZoom(1);
-    setContentOriginOverride(null);
     dragStateRef.current = null;
     panStateRef.current = null;
     didPanRef.current = false;
     setIsPanning(false);
     hoverImageEvent(null);
+
+    if (!imageUrl) {
+      setZoom(1);
+      setContentOriginOverride(null);
+    }
   }, [imageUrl]);
 
   useEffect(() => {
