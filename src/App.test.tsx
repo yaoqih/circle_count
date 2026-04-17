@@ -178,4 +178,25 @@ describe("App", () => {
     naturalWidthSpy.mockRestore();
     naturalHeightSpy.mockRestore();
   });
+
+  it("renders the status message in a dedicated wrapper for stable truncation", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = ReactDOM.createRoot(container);
+
+    await act(async () => {
+      root.render(<App />);
+    });
+
+    const statusMessage = container.querySelector(".status-message");
+
+    expect(statusMessage).not.toBeNull();
+    expect(statusMessage?.textContent).toBe("Open a folder to begin.");
+    expect(statusMessage?.getAttribute("title")).toBe("Open a folder to begin.");
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
 });

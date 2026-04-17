@@ -4,8 +4,27 @@ import ReactDOM from "react-dom/client";
 import { ImageCanvas } from "./ImageCanvas";
 
 class ResizeObserverStub {
+  private static readonly instances = new Set<ResizeObserverStub>();
+
+  constructor(private readonly callback: ResizeObserverCallback) {
+    ResizeObserverStub.instances.add(this);
+  }
+
   observe() {}
-  disconnect() {}
+
+  disconnect() {
+    ResizeObserverStub.instances.delete(this);
+  }
+
+  static flush() {
+    for (const instance of ResizeObserverStub.instances) {
+      instance.callback([], instance as unknown as ResizeObserver);
+    }
+  }
+
+  static reset() {
+    ResizeObserverStub.instances.clear();
+  }
 }
 
 const clamp = (value: number, min: number, max: number) =>
@@ -122,6 +141,9 @@ const expectHorizontalAnchorStable = (
 };
 
 describe("ImageCanvas", () => {
+  let mockClientWidth = 800;
+  let mockClientHeight = 600;
+
   beforeAll(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
       .IS_REACT_ACT_ENVIRONMENT = true;
@@ -144,19 +166,22 @@ describe("ImageCanvas", () => {
     Object.defineProperty(window.HTMLElement.prototype, "clientWidth", {
       configurable: true,
       get() {
-        return 800;
+        return mockClientWidth;
       },
     });
     Object.defineProperty(window.HTMLElement.prototype, "clientHeight", {
       configurable: true,
       get() {
-        return 600;
+        return mockClientHeight;
       },
     });
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    ResizeObserverStub.reset();
+    mockClientWidth = 800;
+    mockClientHeight = 600;
   });
 
   afterAll(() => {
@@ -1080,6 +1105,117 @@ describe("ImageCanvas", () => {
 
     expect(afterMetrics.origin.x).toBeLessThan(beforeMetrics.origin.x);
     expect(afterMetrics.origin.y).toBeLessThan(beforeMetrics.origin.y);
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("keeps the visible image position stable when the viewport height changes during placement", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = ReactDOM.createRoot(container);
+    const imageSize = { width: 2048, height: 2048 };
+
+    const onPlaceDraftBox = vi.fn();
+
+    await act(async () => {
+      root.render(
+        <ImageCanvas
+          boxes={[]}
+          draftBox={{
+            id: "draft-1",
+            classId: 0,
+            x: 924,
+            y: 924,
+            width: 200,
+            height: 200,
+          }}
+          imageName="square.jpg"
+          imageSize={imageSize}
+          imageUrl="circle-label-image://asset?path=/tmp/square.jpg"
+          isPlacingBox
+          selectedBoxId={null}
+          onHoverImage={() => {}}
+          onImageError={() => {}}
+          onImageLoad={() => {}}
+          onMoveBox={() => {}}
+          onPlaceDraftBox={onPlaceDraftBox}
+          onSelectBox={() => {}}
+        />,
+      );
+    });
+
+    const stage = container.querySelector(".canvas-stage");
+    const overlay = container.querySelector(".canvas-overlay");
+    expect(stage).not.toBeNull();
+    expect(overlay).not.toBeNull();
+
+    vi.spyOn(stage!, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 800,
+      bottom: 600,
+      width: 800,
+      height: 600,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(overlay!, "getBoundingClientRect").mockReturnValue({
+      x: 24,
+      y: 24,
+      left: 24,
+      top: 24,
+      right: 576,
+      bottom: 576,
+      width: 552,
+      height: 552,
+      toJSON: () => ({}),
+    });
+
+    const plusButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "+",
+    );
+    expect(plusButton).not.toBeUndefined();
+
+    await act(async () => {
+      plusButton?.click();
+    });
+
+    const beforeMetrics = getCanvasMetrics(
+      container,
+      stage as HTMLElement,
+      imageSize,
+    );
+    const visibleTopBefore = beforeMetrics.origin.y - beforeMetrics.scroll.top;
+
+    mockClientHeight = 520;
+    await act(async () => {
+      ResizeObserverStub.flush();
+    });
+
+    await act(async () => {
+      overlay!.dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          clientX: 300,
+          clientY: 300,
+        }),
+      );
+    });
+
+    expect(onPlaceDraftBox).toHaveBeenCalledOnce();
+
+    const afterMetrics = getCanvasMetrics(
+      container,
+      stage as HTMLElement,
+      imageSize,
+    );
+    const visibleTopAfter = afterMetrics.origin.y - afterMetrics.scroll.top;
+
+    expect(Math.abs(visibleTopAfter - visibleTopBefore)).toBeLessThanOrEqual(1);
 
     await act(async () => {
       root.unmount();

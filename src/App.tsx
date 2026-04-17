@@ -376,7 +376,9 @@ const App = () => {
         </header>
 
         <div className="status-strip">
-          <span>{statusMessage}</span>
+          <span className="status-message" title={statusMessage}>
+            {statusMessage}
+          </span>
           {currentImage ? (
             <strong>
               {currentIndex + 1} / {images.length}
