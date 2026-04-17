@@ -8,6 +8,7 @@ import {
   getCenteredContentOrigin,
   getScrollForZoomAtPoint,
   getScrollSpaceSize,
+  getStableOriginForFittedContentAxis,
   shouldKeepFittedContentOriginOnZoomAxis,
   shouldPreservePaddingOnZoomAxis,
 } from "./viewport";
@@ -161,7 +162,6 @@ describe("viewport helpers", () => {
       shouldKeepFittedContentOriginOnZoomAxis({
         padding: 24,
         previousContentOrigin: 24,
-        previousScrollOffset: 0,
         nextCenteredOrigin: 64,
         nextContentLength: 497,
         viewportLength: 600,
@@ -172,11 +172,42 @@ describe("viewport helpers", () => {
       shouldKeepFittedContentOriginOnZoomAxis({
         padding: 24,
         previousContentOrigin: 24,
-        previousScrollOffset: 0,
+        nextCenteredOrigin: 29,
+        nextContentLength: 541,
+        viewportLength: 600,
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldKeepFittedContentOriginOnZoomAxis({
+        padding: 24,
+        previousContentOrigin: 24,
         nextCenteredOrigin: 68,
         nextContentLength: 827,
         viewportLength: 800,
       }),
     ).toBe(false);
+  });
+
+  it("preserves the current visible top for a fitted axis while keeping viewport padding", () => {
+    expect(
+      getStableOriginForFittedContentAxis({
+        padding: 24,
+        previousContentOrigin: 112,
+        previousScrollOffset: 0,
+        nextContentLength: 338,
+        viewportLength: 600,
+      }),
+    ).toBe(112);
+
+    expect(
+      getStableOriginForFittedContentAxis({
+        padding: 24,
+        previousContentOrigin: 24,
+        previousScrollOffset: 42,
+        nextContentLength: 541,
+        viewportLength: 600,
+      }),
+    ).toBe(24);
   });
 });

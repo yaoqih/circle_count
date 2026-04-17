@@ -61,7 +61,6 @@ const App = () => {
     x: number;
     y: number;
   } | null>(null);
-  const [isPanModifierActive, setIsPanModifierActive] = useState(false);
   const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
   const [imageSize, setImageSize] = useState<ImageSize | null>(null);
   const [fixedBoxWidth, setFixedBoxWidth] = useState(defaultBoxWidth);
@@ -326,10 +325,6 @@ const App = () => {
         event.key === "Delete" ||
         event.key === "Backspace"
       ) {
-        if (isPanModifierActive && key === "s") {
-          return;
-        }
-
         event.preventDefault();
         deleteCurrentBox();
       }
@@ -344,7 +339,6 @@ const App = () => {
     beginBoxPlacement,
     currentIndex,
     deleteCurrentBox,
-    isPanModifierActive,
     navigateTo,
     openFolder,
     saveCurrentAnnotations,
@@ -431,7 +425,6 @@ const App = () => {
               ),
             );
           }}
-          onPanModifierChange={setIsPanModifierActive}
           onPlaceDraftBox={placeDraftBox}
           onSelectBox={setSelectedBoxId}
           selectedBoxId={selectedBoxId}
@@ -561,7 +554,7 @@ const App = () => {
             <li>A: previous image</li>
             <li>D: next image</li>
             <li>Mouse wheel: zoom in or out around the pointer</li>
-            <li>Hold Space and drag: pan the zoomed image</li>
+            <li>Drag after zooming in: pan the image</li>
             <li>Click once on the image: place the box</li>
           </ul>
         </section>

@@ -10,17 +10,14 @@ import {
 
 import type { AnnotationBox, ImageSize } from "../lib/annotation";
 import {
+  clampContentOrigin,
   clampContentPoint,
-  clampScrollOffset,
   clampZoom,
   clampViewportPointToContentBounds,
   fitImageIntoViewport,
-  getAnchoredScrollSpaceLength,
   getCenteredContentOrigin,
-  getScrollForZoomAtPoint,
   getScrollSpaceSize,
-  shouldKeepFittedContentOriginOnZoomAxis,
-  shouldPreservePaddingOnZoomAxis,
+  getStableOriginForFittedContentAxis,
 } from "../lib/viewport";
 
 type ImageCanvasProps = {
@@ -35,7 +32,6 @@ type ImageCanvasProps = {
   onHoverImage: (point: { x: number; y: number } | null) => void;
   onImageLoad: (imageSize: ImageSize) => void;
   onMoveBox: (boxId: string, nextPosition: { x: number; y: number }) => void;
-  onPanModifierChange: (active: boolean) => void;
   onPlaceDraftBox: (point: { x: number; y: number }) => void;
   onSelectBox: (boxId: string | null) => void;
 };
@@ -53,8 +49,8 @@ type PanState = {
   pointerId: number;
   startClientX: number;
   startClientY: number;
-  startScrollLeft: number;
-  startScrollTop: number;
+  startOriginX: number;
+  startOriginY: number;
 };
 
 const viewportPadding = 24;
@@ -71,7 +67,6 @@ export const ImageCanvas = ({
   onHoverImage,
   onImageLoad,
   onMoveBox,
-  onPanModifierChange,
   onPlaceDraftBox,
   onSelectBox,
 }: ImageCanvasProps) => {
@@ -79,18 +74,14 @@ export const ImageCanvas = ({
   const imageElementRef = useRef<HTMLImageElement | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const panStateRef = useRef<PanState | null>(null);
-  const pendingScrollRef = useRef<{ left: number; top: number } | null>(null);
+  const didPanRef = useRef(false);
   const [viewportSize, setViewportSize] = useState<ImageSize | null>(null);
   const [zoom, setZoom] = useState(1);
-  const [scrollSpaceOverride, setScrollSpaceOverride] =
-    useState<ImageSize | null>(null);
   const [contentOriginOverride, setContentOriginOverride] = useState<{
     x: number;
     y: number;
   } | null>(null);
-  const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
-  const [isPointerInsideViewport, setIsPointerInsideViewport] = useState(false);
 
   const viewportInnerSize = viewportSize
     ? {
@@ -108,6 +99,7 @@ export const ImageCanvas = ({
     imageSize && fittedSize && fittedSize.width > 0
       ? imageSize.width / fittedSize.width
       : 1;
+  const clampCanvasZoom = (nextZoom: number) => clampZoom(Math.max(1, nextZoom));
 
   const contentSize =
     fittedSize && imageSize
@@ -117,20 +109,6 @@ export const ImageCanvas = ({
         }
       : null;
 
-  const baseScrollSpaceSize =
-    contentSize && viewportSize
-      ? getScrollSpaceSize(contentSize, viewportSize, viewportPadding)
-      : null;
-  const scrollSpaceSize = baseScrollSpaceSize
-    ? {
-        width: Math.max(baseScrollSpaceSize.width, scrollSpaceOverride?.width ?? 0),
-        height: Math.max(
-          baseScrollSpaceSize.height,
-          scrollSpaceOverride?.height ?? 0,
-        ),
-      }
-    : null;
-
   const scaleX =
     imageSize && contentSize ? contentSize.width / imageSize.width : 1;
   const scaleY =
@@ -139,13 +117,16 @@ export const ImageCanvas = ({
     imageSize && contentSize
       ? Math.round((contentSize.width / imageSize.width) * 100)
       : 100;
-  const centeredContentOrigin =
-    contentSize && scrollSpaceSize
-      ? getCenteredContentOrigin(scrollSpaceSize, contentSize)
+  const defaultContentOrigin =
+    contentSize && viewportSize
+      ? getCenteredContentOrigin(
+          getScrollSpaceSize(contentSize, viewportSize, viewportPadding),
+          contentSize,
+        )
       : null;
   const contentOrigin =
-    contentSize && scrollSpaceSize && centeredContentOrigin
-      ? contentOriginOverride ?? centeredContentOrigin
+    contentSize && viewportSize && defaultContentOrigin
+      ? contentOriginOverride ?? defaultContentOrigin
       : null;
 
   const moveBoxEvent = useEffectEvent(
@@ -158,9 +139,6 @@ export const ImageCanvas = ({
       onHoverImage(point);
     },
   );
-  const panModifierChangeEvent = useEffectEvent((active: boolean) => {
-    onPanModifierChange(active);
-  });
 
   const imagePointFromPointerEvent = (
     event: ReactPointerEvent<HTMLDivElement> | MouseEvent<HTMLDivElement>,
@@ -179,143 +157,112 @@ export const ImageCanvas = ({
     };
   };
 
-  const resetView = useEffectEvent((nextZoom: number) => {
-    pendingScrollRef.current = { left: 0, top: 0 };
-    setScrollSpaceOverride(null);
-    setContentOriginOverride(null);
-    setZoom(clampZoom(nextZoom));
+  const normalizeContentOrigin = (
+    nextOrigin: { x: number; y: number },
+    nextDefaultOrigin: { x: number; y: number },
+  ) =>
+    Math.abs(nextOrigin.x - nextDefaultOrigin.x) <= 1 &&
+    Math.abs(nextOrigin.y - nextDefaultOrigin.y) <= 1
+      ? null
+      : nextOrigin;
+
+  const zoomAtPoint = useEffectEvent(
+    (nextZoomInput: number, viewportPoint: { x: number; y: number }) => {
+      const nextZoom = clampCanvasZoom(nextZoomInput);
+      if (
+        !viewportSize ||
+        !fittedSize ||
+        !contentOrigin ||
+        !contentSize ||
+        !imageSize ||
+        nextZoom === zoom
+      ) {
+        return;
+      }
+
+      const nextContentSize = {
+        width: Math.max(1, Math.round(fittedSize.width * nextZoom)),
+        height: Math.max(1, Math.round(fittedSize.height * nextZoom)),
+      };
+      const nextDefaultOrigin = getCenteredContentOrigin(
+        getScrollSpaceSize(nextContentSize, viewportSize, viewportPadding),
+        nextContentSize,
+      );
+      const anchoredViewportPoint = clampViewportPointToContentBounds({
+        viewportPoint,
+        contentOffset: { x: 0, y: 0 },
+        contentOrigin,
+        contentSize,
+      });
+      const anchoredImagePoint = clampContentPoint(
+        {
+          x: (anchoredViewportPoint.x - contentOrigin.x) / scaleX,
+          y: (anchoredViewportPoint.y - contentOrigin.y) / scaleY,
+        },
+        imageSize,
+      );
+      const rawNextOrigin = {
+        x:
+          anchoredViewportPoint.x -
+          anchoredImagePoint.x * (nextContentSize.width / imageSize.width),
+        y:
+          anchoredViewportPoint.y -
+          anchoredImagePoint.y * (nextContentSize.height / imageSize.height),
+      };
+      const stabilizedNextOrigin =
+        nextZoom < zoom &&
+        nextContentSize.height + viewportPadding * 2 <= viewportSize.height
+          ? {
+              ...rawNextOrigin,
+              y: getStableOriginForFittedContentAxis({
+                padding: viewportPadding,
+                previousContentOrigin: contentOrigin.y,
+                previousScrollOffset: 0,
+                nextContentLength: nextContentSize.height,
+                viewportLength: viewportSize.height,
+              }),
+            }
+          : rawNextOrigin;
+      const nextContentOrigin = clampContentOrigin({
+        contentOrigin: stabilizedNextOrigin,
+        contentSize: nextContentSize,
+        viewportSize,
+        padding: viewportPadding,
+      });
+
+      setContentOriginOverride(
+        normalizeContentOrigin(nextContentOrigin, nextDefaultOrigin),
+      );
+      setZoom(nextZoom);
+    },
+  );
+
+  const zoomFromToolbar = useEffectEvent((nextZoom: number) => {
+    if (!viewportSize) {
+      setContentOriginOverride(null);
+      setZoom(clampCanvasZoom(nextZoom));
+      return;
+    }
+
+    zoomAtPoint(nextZoom, {
+      x: viewportSize.width / 2,
+      y: viewportSize.height / 2,
+    });
   });
 
   const handleWheelZoom = (event: WheelEvent<HTMLDivElement>) => {
-    if (
-      !viewportRef.current ||
-      !viewportSize ||
-      !fittedSize ||
-      !contentOrigin ||
-      !contentSize
-    ) {
+    if (!viewportRef.current || !viewportSize) {
       return;
     }
 
     event.preventDefault();
 
     const factor = event.deltaY < 0 ? 1.1 : 0.9;
-    const nextZoom = clampZoom(zoom * factor);
-    if (nextZoom === zoom) {
-      return;
-    }
-
-    const nextContentSize = {
-      width: Math.max(1, Math.round(fittedSize.width * nextZoom)),
-      height: Math.max(1, Math.round(fittedSize.height * nextZoom)),
-    };
     const rect = viewportRef.current.getBoundingClientRect();
-    const viewportPoint = {
+    zoomAtPoint(zoom * factor, {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top,
-    };
-    const anchoredViewportPoint = clampViewportPointToContentBounds({
-      viewportPoint,
-      contentOffset: {
-        x: viewportRef.current.scrollLeft,
-        y: viewportRef.current.scrollTop,
-      },
-      contentOrigin,
-      contentSize,
     });
-    const anchoredContentPoint = clampContentPoint(
-      {
-        x:
-          (anchoredViewportPoint.x +
-            viewportRef.current.scrollLeft -
-            contentOrigin.x) /
-          zoom,
-        y:
-          (anchoredViewportPoint.y +
-            viewportRef.current.scrollTop -
-            contentOrigin.y) /
-          zoom,
-      },
-      contentSize,
-    );
-    const nextScrollSpaceSize = {
-      width: getAnchoredScrollSpaceLength({
-        contentLength: nextContentSize.width,
-        viewportLength: viewportSize.width,
-        padding: viewportPadding,
-        viewportPoint: anchoredViewportPoint.x,
-        anchoredContentPoint: anchoredContentPoint.x * nextZoom,
-      }),
-      height: getAnchoredScrollSpaceLength({
-        contentLength: nextContentSize.height,
-        viewportLength: viewportSize.height,
-        padding: viewportPadding,
-        viewportPoint: anchoredViewportPoint.y,
-        anchoredContentPoint: anchoredContentPoint.y * nextZoom,
-      }),
-    };
-    const nextCenteredContentOrigin = getCenteredContentOrigin(
-      nextScrollSpaceSize,
-      nextContentSize,
-    );
-    const nextContentOrigin = {
-      x: shouldKeepFittedContentOriginOnZoomAxis({
-        padding: viewportPadding,
-        previousContentOrigin: contentOrigin.x,
-        previousScrollOffset: viewportRef.current.scrollLeft,
-        nextCenteredOrigin: nextCenteredContentOrigin.x,
-        nextContentLength: nextContentSize.width,
-        viewportLength: viewportSize.width,
-      })
-        ? contentOrigin.x
-        : nextCenteredContentOrigin.x,
-      y: shouldKeepFittedContentOriginOnZoomAxis({
-        padding: viewportPadding,
-        previousContentOrigin: contentOrigin.y,
-        previousScrollOffset: viewportRef.current.scrollTop,
-        nextCenteredOrigin: nextCenteredContentOrigin.y,
-        nextContentLength: nextContentSize.height,
-        viewportLength: viewportSize.height,
-      })
-        ? contentOrigin.y
-        : nextCenteredContentOrigin.y,
-    };
-    const rawScrollOffset = getScrollForZoomAtPoint({
-      viewportPoint: anchoredViewportPoint,
-      contentOffset: {
-        x: viewportRef.current.scrollLeft,
-        y: viewportRef.current.scrollTop,
-      },
-      previousContentOrigin: contentOrigin,
-      nextContentOrigin,
-      previousZoom: zoom,
-      nextZoom,
-    });
-    pendingScrollRef.current = clampScrollOffset({
-      scrollOffset: {
-        left: shouldPreservePaddingOnZoomAxis({
-          padding: viewportPadding,
-          previousContentOrigin: contentOrigin.x,
-          previousScrollOffset: viewportRef.current.scrollLeft,
-          nextScrollOffset: rawScrollOffset.left,
-        })
-          ? 0
-          : rawScrollOffset.left,
-        top: shouldPreservePaddingOnZoomAxis({
-          padding: viewportPadding,
-          previousContentOrigin: contentOrigin.y,
-          previousScrollOffset: viewportRef.current.scrollTop,
-          nextScrollOffset: rawScrollOffset.top,
-        })
-          ? 0
-          : rawScrollOffset.top,
-      },
-      scrollSpaceSize: nextScrollSpaceSize,
-      viewportSize,
-    });
-    setScrollSpaceOverride(nextScrollSpaceSize);
-    setContentOriginOverride(nextContentOrigin);
-    setZoom(nextZoom);
   };
 
   useEffect(() => {
@@ -342,59 +289,27 @@ export const ImageCanvas = ({
   }, [imageUrl]);
 
   useEffect(() => {
-    panModifierChangeEvent(isSpacePressed);
-  }, [isSpacePressed]);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const shouldHandleSpace =
-        isPointerInsideViewport ||
-        viewportRef.current?.contains(document.activeElement) ||
-        false;
-
-      if (
-        event.code === "Space" &&
-        shouldHandleSpace &&
-        !isEditableTarget(event.target)
-      ) {
-        event.preventDefault();
-        setIsSpacePressed(true);
-      }
-    };
-
-    const handleKeyUp = (event: KeyboardEvent) => {
-      if (event.code === "Space") {
-        setIsSpacePressed(false);
-      }
-    };
-
     const handleBlur = () => {
-      setIsSpacePressed(false);
       panStateRef.current = null;
+      didPanRef.current = false;
       setIsPanning(false);
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
     window.addEventListener("blur", handleBlur);
 
     return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleBlur);
     };
-  }, [isPointerInsideViewport]);
+  }, []);
 
   useEffect(() => {
     setZoom(1);
-    setScrollSpaceOverride(null);
     setContentOriginOverride(null);
     dragStateRef.current = null;
     panStateRef.current = null;
-    pendingScrollRef.current = null;
+    didPanRef.current = false;
     setIsPanning(false);
     hoverImageEvent(null);
-    viewportRef.current?.scrollTo({ left: 0, top: 0 });
   }, [imageUrl]);
 
   useEffect(() => {
@@ -443,24 +358,68 @@ export const ImageCanvas = ({
   }, [imageUrl, imageSize, onImageLoad]);
 
   useEffect(() => {
-    if (pendingScrollRef.current && viewportRef.current) {
-      const nextScroll = pendingScrollRef.current;
-      viewportRef.current.scrollTo({
-        left: nextScroll.left,
-        top: nextScroll.top,
-      });
-      pendingScrollRef.current = null;
+    if (!contentOriginOverride || !contentSize || !viewportSize) {
+      return;
     }
-  }, [zoom, contentSize]);
+
+    const nextDefaultOrigin = getCenteredContentOrigin(
+      getScrollSpaceSize(contentSize, viewportSize, viewportPadding),
+      contentSize,
+    );
+    const nextContentOrigin = clampContentOrigin({
+      contentOrigin: contentOriginOverride,
+      contentSize,
+      viewportSize,
+      padding: viewportPadding,
+    });
+    const nextOverride = normalizeContentOrigin(
+      nextContentOrigin,
+      nextDefaultOrigin,
+    );
+
+    if (
+      nextOverride === null &&
+      contentOriginOverride !== null
+    ) {
+      setContentOriginOverride(null);
+      return;
+    }
+
+    if (
+      nextOverride &&
+      (nextOverride.x !== contentOriginOverride.x ||
+        nextOverride.y !== contentOriginOverride.y)
+    ) {
+      setContentOriginOverride(nextOverride);
+    }
+  }, [
+    contentOriginOverride,
+    contentSize?.height,
+    contentSize?.width,
+    viewportSize?.height,
+    viewportSize?.width,
+  ]);
 
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
       const panState = panStateRef.current;
-      if (panState && viewportRef.current) {
-        viewportRef.current.scrollLeft =
-          panState.startScrollLeft - (event.clientX - panState.startClientX);
-        viewportRef.current.scrollTop =
-          panState.startScrollTop - (event.clientY - panState.startClientY);
+      if (panState && contentSize && viewportSize && defaultContentOrigin) {
+        const nextContentOrigin = clampContentOrigin({
+          contentOrigin: {
+            x: panState.startOriginX + (event.clientX - panState.startClientX),
+            y: panState.startOriginY + (event.clientY - panState.startClientY),
+          },
+          contentSize,
+          viewportSize,
+          padding: viewportPadding,
+        });
+        didPanRef.current =
+          didPanRef.current ||
+          Math.abs(event.clientX - panState.startClientX) > 2 ||
+          Math.abs(event.clientY - panState.startClientY) > 2;
+        setContentOriginOverride(
+          normalizeContentOrigin(nextContentOrigin, defaultContentOrigin),
+        );
         return;
       }
 
@@ -501,7 +460,7 @@ export const ImageCanvas = ({
       window.removeEventListener("pointerup", handlePointerRelease);
       window.removeEventListener("pointercancel", handlePointerRelease);
     };
-  }, [moveBoxEvent, scaleX, scaleY]);
+  }, [contentSize, defaultContentOrigin, moveBoxEvent, scaleX, scaleY, viewportSize]);
 
   if (!imageUrl) {
     return (
@@ -520,28 +479,35 @@ export const ImageCanvas = ({
         <div className="canvas-toolbar-buttons">
           <button
             className="secondary-button"
-            onClick={() => resetView(zoom / 1.2)}
+            disabled={zoom <= 1}
+            onClick={() => zoomFromToolbar(zoom / 1.2)}
             type="button"
           >
             -
           </button>
           <button
             className="secondary-button"
-            onClick={() => resetView(zoom * 1.2)}
+            onClick={() => zoomFromToolbar(zoom * 1.2)}
             type="button"
           >
             +
           </button>
           <button
             className="secondary-button"
-            onClick={() => resetView(1)}
+            onClick={() => {
+              setContentOriginOverride(null);
+              setZoom(1);
+            }}
             type="button"
           >
             Fit
           </button>
           <button
             className="secondary-button"
-            onClick={() => resetView(naturalZoom)}
+            onClick={() => {
+              setContentOriginOverride(null);
+              setZoom(clampCanvasZoom(naturalZoom));
+            }}
             type="button"
           >
             100%
@@ -549,7 +515,7 @@ export const ImageCanvas = ({
         </div>
         <div className="canvas-toolbar-meta">
           <strong>{zoomPercent}%</strong>
-          <span>Wheel to zoom, hold Space to pan</span>
+          <span>Wheel to zoom, drag to pan</span>
         </div>
       </div>
 
@@ -557,48 +523,42 @@ export const ImageCanvas = ({
         ref={viewportRef}
         className={`canvas-stage ${
           isPanning ? "canvas-stage-panning" : ""
-        } ${isSpacePressed ? "canvas-stage-pan-ready" : ""}`}
-          onClick={() => {
-          if (!isPlacingBox && !isPanning && !isSpacePressed) {
+        } ${zoom > 1 && !isPlacingBox ? "canvas-stage-pan-ready" : ""}`}
+        onClick={() => {
+          if (didPanRef.current) {
+            didPanRef.current = false;
+            return;
+          }
+
+          if (!isPlacingBox && !isPanning) {
             onSelectBox(null);
           }
         }}
-        onPointerEnter={() => {
-          setIsPointerInsideViewport(true);
-        }}
-        onPointerLeave={() => {
-          setIsPointerInsideViewport(false);
-        }}
         onPointerDown={(event) => {
-          if (!isSpacePressed || zoom <= 1 || !viewportRef.current) {
+          if (isPlacingBox || zoom <= 1 || !contentOrigin) {
             return;
           }
 
           event.preventDefault();
+          didPanRef.current = false;
           panStateRef.current = {
             pointerId: event.pointerId,
             startClientX: event.clientX,
             startClientY: event.clientY,
-            startScrollLeft: viewportRef.current.scrollLeft,
-            startScrollTop: viewportRef.current.scrollTop,
+            startOriginX: contentOrigin.x,
+            startOriginY: contentOrigin.y,
           };
           setIsPanning(true);
         }}
         onWheelCapture={handleWheelZoom}
       >
-        {contentSize && scrollSpaceSize ? (
-          <div
-            className="canvas-scroll-space"
-            style={{
-              width: scrollSpaceSize.width,
-              height: scrollSpaceSize.height,
-            }}
-          >
+        {contentSize && contentOrigin ? (
+          <div className="canvas-scroll-space">
             <div
               className="canvas-image-shell"
               style={{
-                left: contentOrigin?.x ?? 0,
-                top: contentOrigin?.y ?? 0,
+                left: contentOrigin.x,
+                top: contentOrigin.y,
                 width: contentSize.width,
                 height: contentSize.height,
               }}
@@ -625,7 +585,7 @@ export const ImageCanvas = ({
               <div
                 className="canvas-overlay"
                 onClick={(event) => {
-                  if (!isPlacingBox || isPanning || isSpacePressed) {
+                  if (!isPlacingBox || isPanning) {
                     return;
                   }
 
@@ -639,7 +599,7 @@ export const ImageCanvas = ({
                   hoverImageEvent(null);
                 }}
                 onPointerMove={(event) => {
-                  if (isPanning || isSpacePressed) {
+                  if (isPanning) {
                     return;
                   }
 
@@ -658,7 +618,7 @@ export const ImageCanvas = ({
                       selectedBoxId === box.id ? "canvas-box-selected" : ""
                     }`}
                     onClick={(event) => {
-                      if (isPlacingBox || isPanning || isSpacePressed) {
+                      if (isPlacingBox || isPanning) {
                         return;
                       }
 
@@ -666,7 +626,7 @@ export const ImageCanvas = ({
                       onSelectBox(box.id);
                     }}
                     onPointerDown={(event) => {
-                      if (isPlacingBox || isPanning || isSpacePressed) {
+                      if (isPlacingBox || isPanning) {
                         return;
                       }
 
@@ -731,17 +691,5 @@ export const ImageCanvas = ({
         )}
       </div>
     </div>
-  );
-};
-
-const isEditableTarget = (target: EventTarget | null): boolean => {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-
-  return (
-    target.tagName === "INPUT" ||
-    target.tagName === "TEXTAREA" ||
-    target.isContentEditable
   );
 };

@@ -16,18 +16,6 @@ const readPixels = (value: string | null | undefined): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const getScrollLimits = (element: HTMLElement) => {
-  const scrollSpace = element.firstElementChild;
-  if (!(scrollSpace instanceof HTMLElement)) {
-    return { left: 0, top: 0 };
-  }
-
-  return {
-    left: Math.max(0, readPixels(scrollSpace.style.width) - element.clientWidth),
-    top: Math.max(0, readPixels(scrollSpace.style.height) - element.clientHeight),
-  };
-};
-
 const getCanvasMetrics = (
   container: HTMLElement,
   stage: HTMLElement,
@@ -149,9 +137,8 @@ describe("ImageCanvas", () => {
         "left" in input &&
         "top" in input
       ) {
-        const limits = getScrollLimits(this);
-        this.scrollLeft = clamp(input.left ?? this.scrollLeft, 0, limits.left);
-        this.scrollTop = clamp(input.top ?? this.scrollTop, 0, limits.top);
+        this.scrollLeft = input.left ?? this.scrollLeft;
+        this.scrollTop = input.top ?? this.scrollTop;
       }
     }) as HTMLElement["scrollTo"];
     Object.defineProperty(window.HTMLElement.prototype, "clientWidth", {
@@ -195,7 +182,6 @@ describe("ImageCanvas", () => {
           onImageError={() => {}}
           onImageLoad={() => {}}
           onMoveBox={() => {}}
-          onPanModifierChange={() => {}}
           onPlaceDraftBox={() => {}}
           onSelectBox={() => {}}
         />,
@@ -240,7 +226,6 @@ describe("ImageCanvas", () => {
           onImageError={() => {}}
           onImageLoad={onImageLoad}
           onMoveBox={() => {}}
-          onPanModifierChange={() => {}}
           onPlaceDraftBox={() => {}}
           onSelectBox={() => {}}
         />,
@@ -294,7 +279,6 @@ describe("ImageCanvas", () => {
           onImageError={() => {}}
           onImageLoad={onImageLoad}
           onMoveBox={() => {}}
-          onPanModifierChange={() => {}}
           onPlaceDraftBox={() => {}}
           onSelectBox={() => {}}
         />,
@@ -343,7 +327,6 @@ describe("ImageCanvas", () => {
           onImageError={() => {}}
           onImageLoad={() => {}}
           onMoveBox={() => {}}
-          onPanModifierChange={() => {}}
           onPlaceDraftBox={() => {}}
           onSelectBox={() => {}}
         />,
@@ -404,7 +387,6 @@ describe("ImageCanvas", () => {
           onImageError={() => {}}
           onImageLoad={() => {}}
           onMoveBox={() => {}}
-          onPanModifierChange={() => {}}
           onPlaceDraftBox={() => {}}
           onSelectBox={() => {}}
         />,
@@ -413,9 +395,6 @@ describe("ImageCanvas", () => {
 
     const stage = container.querySelector(".canvas-stage");
     expect(stage).not.toBeNull();
-
-    const scrollToMock = vi.mocked(window.HTMLElement.prototype.scrollTo);
-    scrollToMock.mockClear();
 
     vi.spyOn(stage!, "getBoundingClientRect").mockReturnValue({
       x: 0,
@@ -446,7 +425,6 @@ describe("ImageCanvas", () => {
       );
     });
 
-    expect(scrollToMock).toHaveBeenCalled();
     expectAnchorStable(
       container,
       stage as HTMLElement,
@@ -482,7 +460,6 @@ describe("ImageCanvas", () => {
           onImageError={() => {}}
           onImageLoad={() => {}}
           onMoveBox={() => {}}
-          onPanModifierChange={() => {}}
           onPlaceDraftBox={() => {}}
           onSelectBox={() => {}}
         />,
@@ -582,7 +559,6 @@ describe("ImageCanvas", () => {
           onImageError={() => {}}
           onImageLoad={() => {}}
           onMoveBox={() => {}}
-          onPanModifierChange={() => {}}
           onPlaceDraftBox={() => {}}
           onSelectBox={() => {}}
         />,
@@ -669,7 +645,6 @@ describe("ImageCanvas", () => {
           onImageError={() => {}}
           onImageLoad={() => {}}
           onMoveBox={() => {}}
-          onPanModifierChange={() => {}}
           onPlaceDraftBox={() => {}}
           onSelectBox={() => {}}
         />,
@@ -736,6 +711,382 @@ describe("ImageCanvas", () => {
     container.remove();
   });
 
+  it("keeps square images pinned near the top padding after zooming in and then shrinking below fit", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = ReactDOM.createRoot(container);
+    const imageSize = { width: 2048, height: 2048 };
+    const viewportPoint = { x: 400, y: 500 };
+
+    await act(async () => {
+      root.render(
+        <ImageCanvas
+          boxes={[]}
+          draftBox={null}
+          imageName="square.jpg"
+          imageSize={imageSize}
+          imageUrl="circle-label-image://asset?path=/tmp/square.jpg"
+          isPlacingBox={false}
+          selectedBoxId={null}
+          onHoverImage={() => {}}
+          onImageError={() => {}}
+          onImageLoad={() => {}}
+          onMoveBox={() => {}}
+          onPlaceDraftBox={() => {}}
+          onSelectBox={() => {}}
+        />,
+      );
+    });
+
+    const stage = container.querySelector(".canvas-stage");
+    expect(stage).not.toBeNull();
+
+    vi.spyOn(stage!, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 800,
+      bottom: 600,
+      width: 800,
+      height: 600,
+      toJSON: () => ({}),
+    });
+
+    const dispatchWheel = async (deltaY: number) => {
+      await act(async () => {
+        stage!.dispatchEvent(
+          new WheelEvent("wheel", {
+            bubbles: true,
+            cancelable: true,
+            clientX: viewportPoint.x,
+            clientY: viewportPoint.y,
+            deltaY,
+          }),
+        );
+      });
+    };
+
+    await dispatchWheel(-100);
+    await dispatchWheel(-100);
+    await dispatchWheel(100);
+    await dispatchWheel(100);
+
+    const fittedTop = (() => {
+      const metrics = getCanvasMetrics(container, stage as HTMLElement, imageSize);
+      return metrics.origin.y - metrics.scroll.top;
+    })();
+    expect(fittedTop).toBeLessThanOrEqual(28);
+
+    await dispatchWheel(100);
+    const furtherZoomOutTop = (() => {
+      const metrics = getCanvasMetrics(container, stage as HTMLElement, imageSize);
+      return metrics.origin.y - metrics.scroll.top;
+    })();
+    expect(furtherZoomOutTop).toBeLessThanOrEqual(28);
+
+    await dispatchWheel(100);
+    const smallestTop = (() => {
+      const metrics = getCanvasMetrics(container, stage as HTMLElement, imageSize);
+      return metrics.origin.y - metrics.scroll.top;
+    })();
+    expect(smallestTop).toBeLessThanOrEqual(28);
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("keeps square images pinned near the top padding when shrinking with toolbar buttons", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = ReactDOM.createRoot(container);
+    const imageSize = { width: 2048, height: 2048 };
+
+    await act(async () => {
+      root.render(
+        <ImageCanvas
+          boxes={[]}
+          draftBox={null}
+          imageName="square.jpg"
+          imageSize={imageSize}
+          imageUrl="circle-label-image://asset?path=/tmp/square.jpg"
+          isPlacingBox={false}
+          selectedBoxId={null}
+          onHoverImage={() => {}}
+          onImageError={() => {}}
+          onImageLoad={() => {}}
+          onMoveBox={() => {}}
+          onPlaceDraftBox={() => {}}
+          onSelectBox={() => {}}
+        />,
+      );
+    });
+
+    const stage = container.querySelector(".canvas-stage");
+    expect(stage).not.toBeNull();
+
+    const minusButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "-",
+    );
+    expect(minusButton).not.toBeUndefined();
+
+    await act(async () => {
+      minusButton?.click();
+    });
+
+    const topAfterFirstShrink = (() => {
+      const metrics = getCanvasMetrics(container, stage as HTMLElement, imageSize);
+      return metrics.origin.y - metrics.scroll.top;
+    })();
+    expect(topAfterFirstShrink).toBeLessThanOrEqual(28);
+
+    await act(async () => {
+      minusButton?.click();
+    });
+
+    const topAfterSecondShrink = (() => {
+      const metrics = getCanvasMetrics(container, stage as HTMLElement, imageSize);
+      return metrics.origin.y - metrics.scroll.top;
+    })();
+    expect(topAfterSecondShrink).toBeLessThanOrEqual(28);
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("does not zoom out below the fitted base size", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = ReactDOM.createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <ImageCanvas
+          boxes={[]}
+          draftBox={null}
+          imageName="demo.jpg"
+          imageSize={{ width: 200, height: 100 }}
+          imageUrl="circle-label-image://asset?path=/tmp/demo.jpg"
+          isPlacingBox={false}
+          selectedBoxId={null}
+          onHoverImage={() => {}}
+          onImageError={() => {}}
+          onImageLoad={() => {}}
+          onMoveBox={() => {}}
+          onPlaceDraftBox={() => {}}
+          onSelectBox={() => {}}
+        />,
+      );
+    });
+
+    const stage = container.querySelector(".canvas-stage");
+    expect(stage).not.toBeNull();
+
+    vi.spyOn(stage!, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 800,
+      bottom: 600,
+      width: 800,
+      height: 600,
+      toJSON: () => ({}),
+    });
+
+    expect(container.querySelector(".canvas-toolbar-meta strong")?.textContent).toBe(
+      "376%",
+    );
+
+    await act(async () => {
+      stage!.dispatchEvent(
+        new WheelEvent("wheel", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 400,
+          clientY: 300,
+          deltaY: 100,
+        }),
+      );
+    });
+
+    expect(container.querySelector(".canvas-toolbar-meta strong")?.textContent).toBe(
+      "376%",
+    );
+
+    const minusButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "-",
+    );
+    expect(minusButton).not.toBeUndefined();
+    expect(minusButton?.hasAttribute("disabled")).toBe(true);
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("keeps landscape images from drifting downward when zooming out", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = ReactDOM.createRoot(container);
+    const imageSize = { width: 2400, height: 1200 };
+    const viewportPoint = { x: 400, y: 300 };
+
+    await act(async () => {
+      root.render(
+        <ImageCanvas
+          boxes={[]}
+          draftBox={null}
+          imageName="landscape.jpg"
+          imageSize={imageSize}
+          imageUrl="circle-label-image://asset?path=/tmp/landscape.jpg"
+          isPlacingBox={false}
+          selectedBoxId={null}
+          onHoverImage={() => {}}
+          onImageError={() => {}}
+          onImageLoad={() => {}}
+          onMoveBox={() => {}}
+          onPlaceDraftBox={() => {}}
+          onSelectBox={() => {}}
+        />,
+      );
+    });
+
+    const stage = container.querySelector(".canvas-stage");
+    expect(stage).not.toBeNull();
+
+    vi.spyOn(stage!, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 800,
+      bottom: 600,
+      width: 800,
+      height: 600,
+      toJSON: () => ({}),
+    });
+
+    const topBefore = (() => {
+      const metrics = getCanvasMetrics(container, stage as HTMLElement, imageSize);
+      return metrics.origin.y - metrics.scroll.top;
+    })();
+
+    await act(async () => {
+      stage!.dispatchEvent(
+        new WheelEvent("wheel", {
+          bubbles: true,
+          cancelable: true,
+          clientX: viewportPoint.x,
+          clientY: viewportPoint.y,
+          deltaY: 100,
+        }),
+      );
+    });
+
+    const topAfter = (() => {
+      const metrics = getCanvasMetrics(container, stage as HTMLElement, imageSize);
+      return metrics.origin.y - metrics.scroll.top;
+    })();
+    expect(Math.abs(topAfter - topBefore)).toBeLessThanOrEqual(4);
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("pans the zoomed image by dragging directly without holding space", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = ReactDOM.createRoot(container);
+    const imageSize = { width: 200, height: 100 };
+
+    await act(async () => {
+      root.render(
+        <ImageCanvas
+          boxes={[]}
+          draftBox={null}
+          imageName="demo.jpg"
+          imageSize={imageSize}
+          imageUrl="circle-label-image://asset?path=/tmp/demo.jpg"
+          isPlacingBox={false}
+          selectedBoxId={null}
+          onHoverImage={() => {}}
+          onImageError={() => {}}
+          onImageLoad={() => {}}
+          onMoveBox={() => {}}
+          onPlaceDraftBox={() => {}}
+          onSelectBox={() => {}}
+        />,
+      );
+    });
+
+    const stage = container.querySelector(".canvas-stage");
+    expect(stage).not.toBeNull();
+
+    const plusButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "+",
+    );
+    expect(plusButton).not.toBeUndefined();
+
+    await act(async () => {
+      plusButton?.click();
+    });
+
+    const beforeMetrics = getCanvasMetrics(
+      container,
+      stage as HTMLElement,
+      imageSize,
+    );
+
+    await act(async () => {
+      stage!.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          pointerId: 1,
+          clientX: 400,
+          clientY: 300,
+        }),
+      );
+      window.dispatchEvent(
+        new PointerEvent("pointermove", {
+          bubbles: true,
+          pointerId: 1,
+          clientX: 350,
+          clientY: 250,
+        }),
+      );
+      window.dispatchEvent(
+        new PointerEvent("pointerup", {
+          bubbles: true,
+          pointerId: 1,
+          clientX: 350,
+          clientY: 250,
+        }),
+      );
+    });
+
+    const afterMetrics = getCanvasMetrics(
+      container,
+      stage as HTMLElement,
+      imageSize,
+    );
+
+    expect(afterMetrics.origin.x).toBeLessThan(beforeMetrics.origin.x);
+    expect(afterMetrics.origin.y).toBeLessThan(beforeMetrics.origin.y);
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
   it("renders existing boxes and still zooms when wheeling over a box", async () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
@@ -764,7 +1115,6 @@ describe("ImageCanvas", () => {
           onImageError={() => {}}
           onImageLoad={() => {}}
           onMoveBox={() => {}}
-          onPanModifierChange={() => {}}
           onPlaceDraftBox={() => {}}
           onSelectBox={() => {}}
         />,

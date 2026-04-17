@@ -108,15 +108,70 @@ export const getCenteredContentOrigin = (
 export const shouldKeepFittedContentOriginOnZoomAxis = (input: {
   padding: number;
   previousContentOrigin: number;
-  previousScrollOffset: number;
   nextCenteredOrigin: number;
   nextContentLength: number;
   viewportLength: number;
 }): boolean =>
   Math.abs(input.previousContentOrigin - input.padding) <= 1 &&
-  input.previousScrollOffset === 0 &&
   input.nextContentLength + input.padding * 2 <= input.viewportLength &&
   input.nextCenteredOrigin > input.previousContentOrigin;
+
+export const getStableOriginForFittedContentAxis = (input: {
+  padding: number;
+  previousContentOrigin: number;
+  previousScrollOffset: number;
+  nextContentLength: number;
+  viewportLength: number;
+}): number => {
+  const minOrigin = input.padding;
+  const maxOrigin = Math.max(
+    minOrigin,
+    input.viewportLength - input.padding - input.nextContentLength,
+  );
+  const previousVisibleOrigin =
+    input.previousContentOrigin - input.previousScrollOffset;
+
+  return Math.round(
+    Math.max(minOrigin, Math.min(previousVisibleOrigin, maxOrigin)),
+  );
+};
+
+export const clampContentOrigin = (input: {
+  contentOrigin: { x: number; y: number };
+  contentSize: ImageSize;
+  viewportSize: ImageSize;
+  padding: number;
+}) => {
+  const clampAxis = (
+    origin: number,
+    contentLength: number,
+    viewportLength: number,
+  ) => {
+    const minOrigin =
+      contentLength + input.padding * 2 <= viewportLength
+        ? input.padding
+        : viewportLength - input.padding - contentLength;
+    const maxOrigin =
+      contentLength + input.padding * 2 <= viewportLength
+        ? viewportLength - input.padding - contentLength
+        : input.padding;
+
+    return Math.round(Math.max(minOrigin, Math.min(origin, maxOrigin)));
+  };
+
+  return {
+    x: clampAxis(
+      input.contentOrigin.x,
+      input.contentSize.width,
+      input.viewportSize.width,
+    ),
+    y: clampAxis(
+      input.contentOrigin.y,
+      input.contentSize.height,
+      input.viewportSize.height,
+    ),
+  };
+};
 
 export const getScrollForZoomAtPoint = (input: {
   viewportPoint: { x: number; y: number };
